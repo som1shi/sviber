@@ -1,0 +1,28 @@
+/* Minimal global resets — MUI's CssBaseline handles the heavy lifting */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}
+
+/* Smooth scrolling for anchor links */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Remove default list styles where needed */
+ul,
+ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
