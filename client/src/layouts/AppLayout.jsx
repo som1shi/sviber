@@ -11,8 +11,11 @@ export default function AppLayout() {
         sx={{
           flexGrow: 1,
           p: 4,
+          pl: 0,
+          ml: `${DRAWER_WIDTH}px`,
           ml: `${DRAWER_WIDTH}px`,
           backgroundColor: '#fff',
+          minHeight: '100vh',
         }}
       >
         <Outlet />
