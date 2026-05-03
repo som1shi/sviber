@@ -54,6 +54,22 @@ const theme = createTheme({
         },
       },
     },
+
+        MuiListItemIcon: {
+      styleOverrides: {
+        root: {
+          color: 'inherit',
+        },
+      },
+    },
+    MuiListItemText: {
+      styleOverrides: {
+        primary: {
+          color: 'inherit',
+        },
+      },
+    },
+
     MuiCard: {
       styleOverrides: {
         root: {
