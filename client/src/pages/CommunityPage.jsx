@@ -1,610 +1,299 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import {
-  Box,
-  Typography,
-  Avatar,
-  TextField,
-  IconButton,
-  InputAdornment,
+  Box, Typography, Tabs, Tab, Card, CardContent,
+  Avatar, Chip, IconButton, Button, Divider
 } from '@mui/material';
-import { ArrowUpward as SendIcon } from '@mui/icons-material';
+import {
+  KeyboardArrowUp, KeyboardArrowDown, Star, StarBorder,
+  Build, Add, LocalFireDepartment
+} from '@mui/icons-material';
 
-// ─── colour helpers ────────────────────────────────────────────────────────────
-const PURPLE = '#7C5CFC';
-const GREEN = '#00E5A0';
+const TABS = ['Hot', 'New', 'Building', 'Mine'];
 
-// ─── static seed data ─────────────────────────────────────────────────────────
-const SEED_MESSAGES = [
+const mockIdeas = [
   {
     id: 1,
-    type: 'system-issue',
-    content: 'Missing fallback when pyannote model fails - wrap in try/catch and degrade gracefully',
-    issueNumber: 2,
-    dateDivider: null,
+    author: 'Ariel S.',
+    authorElo: 847,
+    role: 'Founder',
+    title: 'BOGO Optimizer — never pay full price again',
+    description: 'ML model that tracks every BOGO deal across 200+ grocery chains, tells you exactly when to bulk-buy Oreos. IRR on snacks: 340%.',
+    heat: 94,
+    upvotes: 312,
+    builders: 41,
+    tags: ['AI', 'Finance'],
+    saved: false,
+    building: false,
+    isNew: false,
   },
   {
     id: 2,
-    type: 'divider',
-    label: 'today',
+    author: 'Rishabh A.',
+    authorElo: 612,
+    role: 'Builder',
+    title: "LinkedIn but for your dog — PawdIn",
+    description: "Professional networking for dogs. Endorse your golden retriever for 'fetching' and 'squirrel awareness'. 500+ connections or you're a bad owner.",
+    heat: 88,
+    upvotes: 245,
+    builders: 18,
+    tags: ['Social', 'Pets'],
+    saved: true,
+    building: false,
+    isNew: false,
   },
   {
     id: 3,
-    type: 'user',
-    sender: 'DD',
-    senderColor: GREEN,
-    senderInitials: 'DD',
-    time: '9:41 AM',
-    alignRight: true,
-    content: 'hey @sarvagya -- i pushed the linear integration. @AI can you summarize whats\'s left before we can demo?',
-    highlights: ['@sarvagya', '@AI'],
+    author: 'Serena H.',
+    authorElo: 390,
+    role: 'Hacker',
+    title: "Uber but for borrowing your neighbor's stuff",
+    description: "Why buy a drill you'll use once? Rent Dave's drill for $2. Dave has 47 drills. Dave has a problem. Dave needs this app.",
+    heat: 76,
+    upvotes: 189,
+    builders: 12,
+    tags: ['Marketplace', 'Sustainability'],
+    saved: false,
+    building: false,
+    isNew: false,
   },
   {
     id: 4,
-    type: 'ai',
-    time: '9:41 AM',
-    summary: {
-      title: 'PROJECT SUMMARY',
-      subtitle: '3 things blocking the demo:',
-      items: [
-        { text: 'Speaker diarization (SVB-007) - assigned to sarvagya, in progress' },
-        { text: 'Action item extraction accuracy < 80% on edge cases - no owner' },
-        { text: 'Auth flow for Linear OAuth - needs design approval' },
-      ],
-    },
+    author: 'Maya K.',
+    authorElo: 455,
+    role: 'Hacker',
+    title: "AI that replies to your landlord so you don't have to",
+    description: "Trained on 10,000 passive-aggressive landlord emails. Responds politely, legally, and 40% more effectively than you would while angry.",
+    heat: 71,
+    upvotes: 156,
+    builders: 9,
+    tags: ['AI', 'Legal'],
+    saved: false,
+    building: false,
+    isNew: true,
   },
   {
     id: 5,
-    type: 'elo-event',
-    text: 'Linear integration merged  - ELO event triggered',
-    delta: '+4 ELO',
-  },
-  {
-    id: 6,
-    type: 'user',
-    sender: 'sarvagya s.',
-    senderColor: '#F5A623',
-    senderInitials: 'SS',
-    time: '10:03 AM',
-    alignRight: false,
-    content: 'sorry was locked in -- diarization is now working actually. pushing in 20 mins. can we call then?',
-    highlights: [],
+    author: 'Justin T.',
+    authorElo: 520,
+    role: 'Builder',
+    title: 'Yelp for your coworkers',
+    description: '1-5 stars. Leave anonymous reviews. "Greg microwaves fish daily, 1 star." Finally hold people accountable for the thing.',
+    heat: 65,
+    upvotes: 98,
+    builders: 6,
+    tags: ['Social', 'Productivity'],
+    saved: false,
+    building: false,
+    isNew: true,
   },
 ];
 
-// ─── sub-components ───────────────────────────────────────────────────────────
+const roleColors = {
+  Founder: '#16a34a',
+  Builder: '#2563eb',
+  Hacker: '#9333ea',
+};
 
-function DateDivider({ label }) {
+function IdeaCard({ idea, onUpvote, onToggleSave, onToggleBuild }) {
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, my: 2, px: 3 }}>
-      <Box sx={{ flex: 1, height: '1px', backgroundColor: PURPLE, opacity: 0.5 }} />
-      <Typography
-        sx={{
-          fontSize: '0.75rem',
-          fontFamily: '"DM Mono", monospace',
-          fontWeight: 700,
-          color: '#1a1a1a',
-          letterSpacing: '0.05em',
-        }}
-      >
-        {label}
-      </Typography>
-      <Box sx={{ flex: 1, height: '1px', backgroundColor: PURPLE, opacity: 0.5 }} />
-    </Box>
-  );
-}
-
-function SystemIssue({ issueNumber, content }) {
-  return (
-    <Box sx={{ display: 'flex', justifyContent: 'flex-start', px: 3, mb: 2 }}>
-      <Box
-        sx={{
-          backgroundColor: '#1E1E1E',
-          borderRadius: 3,
-          px: 2.5,
-          py: 1.75,
-          maxWidth: 480,
-        }}
-      >
-        <Typography
-          sx={{
-            fontSize: '0.88rem',
-            color: '#FFFFFF',
-            lineHeight: 1.55,
-            fontFamily: '"DM Sans", sans-serif',
-          }}
-        >
-          <Box
-            component="span"
-            sx={{ color: PURPLE, fontWeight: 700, mr: 0.5 }}
-          >
-            Issue {issueNumber}:
-          </Box>
-          {content}
-        </Typography>
-      </Box>
-    </Box>
-  );
-}
-
-function EloEvent({ text, delta }) {
-  return (
-    <Box
+    <Card
+      elevation={0}
       sx={{
-        mx: 3,
-        my: 1.5,
-        backgroundColor: '#1E1E1E',
-        borderRadius: 2,
-        px: 2.5,
-        py: 1.25,
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
+        border: '1px solid #e5e7eb',
+        borderRadius: 3,
+        backgroundColor: '#fff',
+        boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
+        '&:hover': { borderColor: '#d1d5db', boxShadow: '0 4px 16px rgba(0,0,0,0.08)' },
+        transition: 'all 0.15s ease',
       }}
     >
-      <Typography
-        sx={{
-          fontSize: '0.82rem',
-          color: '#FFFFFF',
-          fontFamily: '"DM Sans", sans-serif',
-          fontWeight: 500,
-        }}
-      >
-        {text}
-      </Typography>
-      <Typography
-        sx={{
-          fontSize: '0.82rem',
-          color: GREEN,
-          fontFamily: '"DM Mono", monospace',
-          fontWeight: 700,
-        }}
-      >
-        {delta}
-      </Typography>
-    </Box>
-  );
-}
-
-function highlightText(text, highlights) {
-  if (!highlights || highlights.length === 0) return text;
-  const parts = text.split(new RegExp(`(${highlights.join('|')})`, 'g'));
-  return parts.map((part, i) =>
-    highlights.includes(part)
-      ? <Box key={i} component="span" sx={{ color: PURPLE, fontWeight: 700 }}>{part}</Box>
-      : part
-  );
-}
-
-function UserMessage({ msg }) {
-  return (
-    <Box
-      sx={{
-        display: 'flex',
-        flexDirection: msg.alignRight ? 'row-reverse' : 'row',
-        alignItems: 'flex-start',
-        gap: 1.5,
-        px: 3,
-        mb: 2,
-      }}
-    >
-      {/* Avatar — only for left-aligned messages */}
-      {!msg.alignRight && (
-        <Avatar
-          sx={{
-            width: 34,
-            height: 34,
-            backgroundColor: msg.senderColor,
-            fontSize: '0.72rem',
-            fontWeight: 700,
-            color: '#1a1a1a',
-            fontFamily: '"DM Mono", monospace',
-            flexShrink: 0,
-            mt: 0.25,
-          }}
-        >
-          {msg.senderInitials}
-        </Avatar>
-      )}
-
-      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: msg.alignRight ? 'flex-end' : 'flex-start', maxWidth: 520 }}>
-        {/* Meta row */}
-        <Box
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 1,
-            mb: 0.5,
-            flexDirection: msg.alignRight ? 'row-reverse' : 'row',
-          }}
-        >
-          <Typography
-            sx={{
-              fontSize: '0.75rem',
-              color: '#888',
-              fontFamily: '"DM Mono", monospace',
-            }}
-          >
-            {msg.time}
-          </Typography>
-          {msg.alignRight && (
-            <Typography
+      <CardContent sx={{ p: 3 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Avatar sx={{ width: 28, height: 28, fontSize: 12, bgcolor: '#111' }}>
+              {idea.author.split(' ').map(n => n[0]).join('')}
+            </Avatar>
+            <Typography sx={{ fontWeight: 600, fontSize: 13 }}>{idea.author}</Typography>
+            <Typography sx={{ fontSize: 12, color: '#9ca3af' }}>{idea.authorElo}</Typography>
+            <Chip
+              label={idea.role}
+              size="small"
               sx={{
-                fontSize: '0.75rem',
-                color: '#888',
-                fontFamily: '"DM Mono", monospace',
-              }}
-            >
-              you
-            </Typography>
-          )}
-          {!msg.alignRight && (
-            <Typography
-              sx={{
-                fontSize: '0.78rem',
+                fontSize: 11,
+                height: 20,
+                bgcolor: `${roleColors[idea.role]}15`,
+                color: roleColors[idea.role],
                 fontWeight: 600,
-                color: '#1a1a1a',
-                fontFamily: '"DM Sans", sans-serif',
+                border: 'none',
               }}
-            >
-              {msg.sender}
-            </Typography>
-          )}
-        </Box>
-
-        {/* Bubble */}
-        <Box
-          sx={{
-            backgroundColor: '#1E1E1E',
-            borderRadius: 3,
-            px: 2.5,
-            py: 1.75,
-          }}
-        >
-          <Typography
-            sx={{
-              fontSize: '0.9rem',
-              color: '#FFFFFF',
-              lineHeight: 1.6,
-              fontFamily: '"DM Sans", sans-serif',
-            }}
-          >
-            {highlightText(msg.content, msg.highlights)}
-          </Typography>
-        </Box>
-      </Box>
-
-      {/* Right-side avatar */}
-      {msg.alignRight && (
-        <Avatar
-          sx={{
-            width: 34,
-            height: 34,
-            backgroundColor: msg.senderColor,
-            fontSize: '0.72rem',
-            fontWeight: 700,
-            color: '#1a1a1a',
-            fontFamily: '"DM Mono", monospace',
-            flexShrink: 0,
-            mt: 0.25,
-          }}
-        >
-          {msg.senderInitials}
-        </Avatar>
-      )}
-    </Box>
-  );
-}
-
-function AiMessage({ msg }) {
-  return (
-    <Box sx={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-start', gap: 1.5, px: 3, mb: 2 }}>
-      {/* AI avatar */}
-      <Avatar
-        sx={{
-          width: 34,
-          height: 34,
-          backgroundColor: PURPLE,
-          fontSize: '0.72rem',
-          fontWeight: 700,
-          color: '#fff',
-          fontFamily: '"DM Mono", monospace',
-          flexShrink: 0,
-          mt: 0.25,
-        }}
-      >
-        AI
-      </Avatar>
-
-      <Box sx={{ maxWidth: 560 }}>
-        {/* Meta */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-          <Typography
-            sx={{
-              fontSize: '0.78rem',
-              fontWeight: 600,
-              color: '#1a1a1a',
-              fontFamily: '"DM Sans", sans-serif',
-            }}
-          >
-            sviber ai
-          </Typography>
-          <Typography
-            sx={{
-              fontSize: '0.75rem',
-              color: '#888',
-              fontFamily: '"DM Mono", monospace',
-            }}
-          >
-            9:41 AM
-          </Typography>
-        </Box>
-
-        {/* AI bubble */}
-        <Box
-          sx={{
-            backgroundColor: '#1E1E1E',
-            borderRadius: 3,
-            px: 2.5,
-            py: 2,
-          }}
-        >
-          <Typography
-            sx={{
-              fontSize: '0.78rem',
-              color: PURPLE,
-              fontWeight: 700,
-              fontFamily: '"DM Mono", monospace',
-              letterSpacing: '0.08em',
-              mb: 1,
-            }}
-          >
-            {msg.summary.title}
-          </Typography>
-          <Typography
-            sx={{
-              fontSize: '0.9rem',
-              color: '#FFFFFF',
-              fontWeight: 700,
-              fontFamily: '"DM Sans", sans-serif',
-              mb: 1.25,
-            }}
-          >
-            {msg.summary.subtitle}
-          </Typography>
-          <Box component="ol" sx={{ pl: 2, m: 0 }}>
-            {msg.summary.items.map((item, i) => (
-              <Box
-                key={i}
-                component="li"
-                sx={{
-                  fontSize: '0.88rem',
-                  color: '#FFFFFF',
-                  lineHeight: 1.6,
-                  fontFamily: '"DM Sans", sans-serif',
-                  mb: i < msg.summary.items.length - 1 ? 0.5 : 0,
-                }}
-              >
-                {item.text}
-              </Box>
-            ))}
+            />
+            {idea.isNew && (
+              <Chip label="just posted" size="small" sx={{ fontSize: 11, height: 20, bgcolor: '#f3f4f6', color: '#6b7280' }} />
+            )}
+          </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <LocalFireDepartment sx={{ fontSize: 14, color: '#f97316' }} />
+            <Typography sx={{ fontSize: 12, fontWeight: 600, color: '#f97316' }}>{idea.heat}%</Typography>
           </Box>
         </Box>
-      </Box>
-    </Box>
-  );
-}
 
-// ─── top bar ──────────────────────────────────────────────────────────────────
-
-function TopBar({ channel, eloScore }) {
-  return (
-    <Box
-      sx={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        px: 3,
-        py: 1.5,
-        borderBottom: '1px solid rgba(0,0,0,0.08)',
-        backgroundColor: '#F2F2F2',
-        flexShrink: 0,
-      }}
-    >
-      <Typography
-        sx={{
-          fontFamily: '"DM Mono", monospace',
-          fontWeight: 500,
-          fontSize: '1rem',
-          color: '#1a1a1a',
-        }}
-      >
-        #{channel}
-      </Typography>
-
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-        {/* ELO badge */}
-        <Typography
-          sx={{
-            fontFamily: '"DM Mono", monospace',
-            fontSize: '0.88rem',
-            color: '#888',
-          }}
-        >
-          elo{' '}
-          <Box component="span" sx={{ color: PURPLE, fontWeight: 700 }}>
-            {eloScore}
-          </Box>
+        <Typography sx={{ fontWeight: 700, fontSize: 15, mb: 0.75, lineHeight: 1.3 }}>
+          {idea.title}
+        </Typography>
+        <Typography sx={{ fontSize: 13, color: '#6b7280', mb: 2, lineHeight: 1.5 }}>
+          {idea.description}
         </Typography>
 
-        {/* User avatars */}
-        <Avatar
-          sx={{
-            width: 30,
-            height: 30,
-            backgroundColor: '#F5A623',
-            fontSize: '0.68rem',
-            fontWeight: 700,
-            color: '#1a1a1a',
-          }}
-        >
-          SS
-        </Avatar>
-        <Avatar
-          sx={{
-            width: 30,
-            height: 30,
-            backgroundColor: GREEN,
-            fontSize: '0.68rem',
-            fontWeight: 700,
-            color: '#1a1a1a',
-          }}
-        >
-          DD
-        </Avatar>
-      </Box>
-    </Box>
+        <Box sx={{ display: 'flex', gap: 0.75, mb: 2, flexWrap: 'wrap' }}>
+          {idea.tags.map(tag => (
+            <Chip
+              key={tag}
+              label={tag}
+              size="small"
+              sx={{ fontSize: 11, height: 22, bgcolor: '#f9fafb', color: '#374151', border: '1px solid #e5e7eb' }}
+            />
+          ))}
+        </Box>
+
+        <Divider sx={{ mb: 2 }} />
+
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <IconButton size="small" onClick={() => onUpvote(idea.id)} sx={{ p: 0.5 }}>
+              <KeyboardArrowUp sx={{ fontSize: 18 }} />
+            </IconButton>
+            <Typography sx={{ fontWeight: 700, fontSize: 13, minWidth: 24, textAlign: 'center' }}>
+              {idea.upvotes}
+            </Typography>
+            <IconButton size="small" sx={{ p: 0.5 }}>
+              <KeyboardArrowDown sx={{ fontSize: 18 }} />
+            </IconButton>
+          </Box>
+
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <Button
+              size="small"
+              startIcon={<Build sx={{ fontSize: 13 }} />}
+              onClick={() => onToggleBuild(idea.id)}
+              sx={{
+                fontSize: 12,
+                textTransform: 'none',
+                color: idea.building ? '#2563eb' : '#6b7280',
+                fontWeight: idea.building ? 700 : 400,
+                p: '2px 8px',
+                minWidth: 0,
+              }}
+            >
+              {idea.builders} builders
+            </Button>
+            <IconButton size="small" onClick={() => onToggleSave(idea.id)} sx={{ p: 0.5 }}>
+              {idea.saved
+                ? <Star sx={{ fontSize: 16, color: '#f59e0b' }} />
+                : <StarBorder sx={{ fontSize: 16, color: '#9ca3af' }} />}
+            </IconButton>
+          </Box>
+        </Box>
+      </CardContent>
+    </Card>
   );
 }
-
-// ─── message input ────────────────────────────────────────────────────────────
-
-function MessageInput({ channel, onSend }) {
-  const [value, setValue] = useState('');
-
-  const handleSend = () => {
-    if (!value.trim()) return;
-    onSend(value.trim());
-    setValue('');
-  };
-
-  const handleKey = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
-
-  return (
-    <Box sx={{ px: 3, pb: 3, pt: 1.5, flexShrink: 0 }}>
-      <Box
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          backgroundColor: '#FFFFFF',
-          borderRadius: 3,
-          border: '1px solid rgba(0,0,0,0.08)',
-          px: 2,
-          py: 0.5,
-        }}
-      >
-        <TextField
-          fullWidth
-          multiline
-          maxRows={4}
-          variant="standard"
-          placeholder={`message #${channel} - type @ to mention, /ai to ask sviber assistant`}
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={handleKey}
-          InputProps={{
-            disableUnderline: true,
-            startAdornment: (
-              <InputAdornment position="start">
-                <Typography
-                  sx={{
-                    fontSize: '0.88rem',
-                    color: '#888',
-                    fontFamily: '"DM Mono", monospace',
-                    mr: 0.5,
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  message
-                </Typography>
-              </InputAdornment>
-            ),
-          }}
-          sx={{
-            '& .MuiInputBase-input': {
-              fontFamily: '"DM Mono", monospace',
-              fontSize: '0.88rem',
-              color: '#1a1a1a',
-              py: 1,
-              '&::placeholder': { color: '#aaa', opacity: 1 },
-            },
-          }}
-        />
-        <IconButton
-          onClick={handleSend}
-          disabled={!value.trim()}
-          sx={{
-            ml: 1,
-            width: 36,
-            height: 36,
-            backgroundColor: value.trim() ? '#1a1a1a' : '#1a1a1a',
-            borderRadius: '50%',
-            flexShrink: 0,
-            '&:hover': { backgroundColor: '#333' },
-            '&.Mui-disabled': { backgroundColor: '#1a1a1a', opacity: 0.5 },
-          }}
-        >
-          <SendIcon sx={{ fontSize: 18, color: '#fff' }} />
-        </IconButton>
-      </Box>
-    </Box>
-  );
-}
-
-// ─── main page ────────────────────────────────────────────────────────────────
 
 export default function CommunityPage() {
-  const [messages, setMessages] = useState(SEED_MESSAGES);
-  const bottomRef = useRef(null);
+  const [tab, setTab] = useState(0);
+  const [ideas, setIdeas] = useState(mockIdeas);
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  const totalUpvotes = ideas.reduce((sum, i) => sum + i.upvotes, 0);
+  const wantToBuild = ideas.reduce((sum, i) => sum + i.builders, 0);
+  const myElo = 340;
 
-  const handleSend = (text) => {
-    const newMsg = {
-      id: Date.now(),
-      type: 'user',
-      sender: 'you',
-      senderColor: GREEN,
-      senderInitials: 'DD',
-      time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-      alignRight: true,
-      content: text,
-      highlights: [],
-    };
-    setMessages((prev) => [...prev, newMsg]);
+  const handleUpvote = (id) => {
+    setIdeas(prev => prev.map(i => i.id === id ? { ...i, upvotes: i.upvotes + 1 } : i));
+  };
+  const handleToggleSave = (id) => {
+    setIdeas(prev => prev.map(i => i.id === id ? { ...i, saved: !i.saved } : i));
+  };
+  const handleToggleBuild = (id) => {
+    setIdeas(prev => prev.map(i => i.id === id ? { ...i, building: !i.building, builders: i.building ? i.builders - 1 : i.builders + 1 } : i));
   };
 
-  return (
-    <Box
-      sx={{
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100%',
-        backgroundColor: '#F2F2F2',
-      }}
-    >
-      <TopBar channel="general" eloScore={88} />
+  const filteredIdeas = tab === 3
+    ? ideas.filter(i => i.saved)
+    : tab === 2
+    ? ideas.filter(i => i.building)
+    : tab === 1
+    ? [...ideas].sort((a, b) => b.id - a.id)
+    : [...ideas].sort((a, b) => b.heat - a.heat);
 
-      {/* Messages scroll area */}
-      <Box sx={{ flex: 1, overflowY: 'auto', py: 2 }}>
-        {messages.map((msg) => {
-          if (msg.type === 'divider') return <DateDivider key={msg.id} label={msg.label} />;
-          if (msg.type === 'system-issue') return <SystemIssue key={msg.id} issueNumber={msg.issueNumber} content={msg.content} />;
-          if (msg.type === 'elo-event') return <EloEvent key={msg.id} text={msg.text} delta={msg.delta} />;
-          if (msg.type === 'ai') return <AiMessage key={msg.id} msg={msg} />;
-          if (msg.type === 'user') return <UserMessage key={msg.id} msg={msg} />;
-          return null;
-        })}
-        <div ref={bottomRef} />
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 3 }}>
+        <Box>
+          <Typography variant="h4" sx={{ fontWeight: 700, mb: 0.5 }}>
+            Community
+          </Typography>
+          <Typography sx={{ color: '#6b7280' }}>
+            Post half-baked ideas. Let the crowd decide.
+          </Typography>
+        </Box>
+        <Button
+          variant="contained"
+          startIcon={<Add />}
+          sx={{
+            bgcolor: '#111',
+            color: '#fff',
+            borderRadius: 2,
+            textTransform: 'none',
+            fontWeight: 600,
+            '&:hover': { bgcolor: '#333' },
+          }}
+        >
+          Post idea
+        </Button>
       </Box>
 
-      <MessageInput channel="general" onSend={handleSend} />
+      <Box sx={{ display: 'flex', gap: 4, mb: 3 }}>
+        {[
+          { label: 'total upvotes', value: totalUpvotes },
+          { label: 'want to build', value: wantToBuild },
+          { label: 'ELO score', value: myElo },
+        ].map(stat => (
+          <Box key={stat.label}>
+            <Typography sx={{ fontWeight: 700, fontSize: 22 }}>{stat.value}</Typography>
+            <Typography sx={{ fontSize: 12, color: '#9ca3af' }}>{stat.label}</Typography>
+          </Box>
+        ))}
+      </Box>
+
+      <Tabs
+        value={tab}
+        onChange={(_, v) => setTab(v)}
+        sx={{
+          mb: 3,
+          '& .MuiTab-root': { textTransform: 'none', fontWeight: 600, fontSize: 13, minWidth: 80 },
+          '& .MuiTabs-indicator': { bgcolor: '#111' },
+          '& .Mui-selected': { color: '#111' },
+        }}
+      >
+        {TABS.map(t => <Tab key={t} label={t} />)}
+      </Tabs>
+
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        {filteredIdeas.length === 0 ? (
+          <Typography sx={{ color: '#9ca3af', textAlign: 'center', py: 6 }}>
+            Nothing here yet.
+          </Typography>
+        ) : (
+          filteredIdeas.map(idea => (
+            <IdeaCard
+              key={idea.id}
+              idea={idea}
+              onUpvote={handleUpvote}
+              onToggleSave={handleToggleSave}
+              onToggleBuild={handleToggleBuild}
+            />
+          ))
+        )}
+      </Box>
     </Box>
   );
 }
