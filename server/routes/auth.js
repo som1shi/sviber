@@ -9,7 +9,7 @@ router.get('/google', passport.authenticate('google', { scope: ['profile', 'emai
 router.get('/google/callback',
   passport.authenticate('google', { failureRedirect: '/?error=auth_failed' }),
   (req, res) => {
-    res.redirect(CLIENT_URL + '/app/swipe');
+    res.redirect(CLIENT_URL);
   }
 );
 
