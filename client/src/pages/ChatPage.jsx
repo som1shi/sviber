@@ -582,7 +582,7 @@ function MessageInput({ channel, onSend }) {
 // ─── main page ────────────────────────────────────────────────────────────────
 
 
-export default function CommunityPage() {
+export default function ChatPage() {
  const [messages, setMessages] = useState(SEED_MESSAGES);
  const bottomRef = useRef(null);
 
