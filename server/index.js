@@ -21,11 +21,10 @@ app.use(session({
 const connectDB = require('./config/db');
 connectDB();
 
-//TODO: uncomment to enable Google OAuth
-// const passport = require('passport');
-// require('./config/passport');
-// app.use(passport.initialize());
-// app.use(passport.session());
+const passport = require('passport');
+require('./config/passport');
+app.use(passport.initialize());
+app.use(passport.session());
 
 app.use('/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));
