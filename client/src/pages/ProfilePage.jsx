@@ -1,18 +1,35 @@
-import { Box, Typography } from '@mui/material';
+import { useState, useEffect } from 'react';
+import { Box, Typography, CircularProgress } from '@mui/material';
 import ProfileCard from '../components/ProfileCard';
 import ActiveProjects from '../components/ActiveProjects';
 import EloBreakdown from '../components/EloBreakdown';
 
+const API = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+
 export default function ProfilePage() {
-  // Mock user data
+  const [profileUser, setProfileUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch(`${API}/api/users/me`, { credentials: 'include' })
+      .then((r) => r.json())
+      .then((data) => {
+        setProfileUser(data);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  if (loading) return <CircularProgress sx={{ m: 4 }} />;
+
   const mockUser = {
-    name: 'Dylan Dang',
-    title: 'Builder',
-    school: "UC Berkeley '27",
-    elo: -223,
-    bio: "Hey, I'm Dylan! I'm a third year studying data science. I like eating malatang, doomscrolling depop, playing brawl stars, running, and Mohammed Amini!",
-    profilePic: '', // Add image URL here later
-    githubLink: 'github.com/dylandango',
+    name: profileUser?.displayName || '',
+    title: profileUser?.role || 'Builder',
+    school: profileUser?.school || '',
+    elo: profileUser?.elo || 0,
+    bio: profileUser?.bio || '',
+    profilePic: profileUser?.avatar || '',
+    githubLink: profileUser?.github || '',
   };
 
   // Mock projects data
