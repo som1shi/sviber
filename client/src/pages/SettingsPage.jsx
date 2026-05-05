@@ -10,6 +10,7 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     fetch(`${API}/api/users/me`, { credentials: 'include' })
@@ -33,14 +34,19 @@ export default function SettingsPage() {
 
   const handleSave = async () => {
     setSaving(true);
-    await fetch(`${API}/api/users/me`, {
+    setError('');
+    const res = await fetch(`${API}/api/users/me`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify(form),
     });
     setSaving(false);
-    setSaved(true);
+    if (res.ok) {
+      setSaved(true);
+    } else {
+      setError(`Save failed (${res.status}) — try logging out and back in.`);
+    }
   };
 
   if (loading) return <CircularProgress sx={{ m: 4 }} />;
@@ -114,6 +120,7 @@ export default function SettingsPage() {
           {saving ? 'Saving...' : 'Save changes'}
         </Button>
         {saved && <Typography sx={{ color: 'green', fontSize: '0.9rem' }}>Saved!</Typography>}
+        {error && <Typography sx={{ color: 'red', fontSize: '0.9rem' }}>{error}</Typography>}
       </Box>
 
       <Divider sx={{ my: 4 }} />
