@@ -21,7 +21,7 @@ export default function ProfilePage() {
       id: 1,
       name: 'Malatang Optimizer',
       emoji: '🍲',
-      user: '@sunninkim',
+      user: '@sunminkim',
       progress: 30,
       progressColor: '#fbbf24',
     },
