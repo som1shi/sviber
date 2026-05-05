@@ -622,7 +622,7 @@ export default function ChatPage() {
           senderColor: msg.senderColor,
           senderInitials: msg.senderInitials,
           time: new Date(msg.time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-          alignRight: msg.senderId === ME.id,
+          alignRight: false,
           content: msg.content,
           highlights: [],
         },
@@ -634,6 +634,22 @@ export default function ChatPage() {
   }, []);
 
   const handleSend = useCallback((text) => {
+    // Add to UI immediately so the sender doesn't wait for the server
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: Date.now(),
+        type: 'user',
+        sender: 'you',
+        senderColor: ME.color,
+        senderInitials: ME.initials,
+        time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+        alignRight: true,
+        content: text,
+        highlights: [],
+      },
+    ]);
+
     socket.emit('send-message', {
       matchId: MATCH_ID,
       senderId: ME.id,

@@ -4,6 +4,7 @@ import PublicLayout from './layouts/PublicLayout';
 import AppLayout from './layouts/AppLayout';
 
 import LandingPage from './pages/LandingPage';
+import LoginPage from './pages/LoginPage';
 import SwipePage from './pages/SwipePage';
 import MatchesPage from './pages/MatchesPage';
 import CommunityPage from './pages/CommunityPage';
@@ -16,6 +17,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<PublicLayout><LandingPage /></PublicLayout>} />
+      <Route path="/login" element={<LoginPage />} />
 
       {/* TODO: wrap AppLayout in a ProtectedRoute once Google OAuth is wired up */}
       <Route path="/app" element={<AppLayout />}>

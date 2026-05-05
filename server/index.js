@@ -10,28 +10,30 @@ const httpServer = createServer(app);
 const PORT = process.env.PORT || 5000;
 
 const io = new Server(httpServer, {
-  cors: { origin: process.env.CLIENT_URL || 'http://localhost:5173', credentials: true },
+  cors: { origin: '*' },
 });
 
-app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173', credentials: true }));
+app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5175', credentials: true }));
 app.use(express.json());
 
-// TODO: uncomment to enable sessions (required before Google OAuth)
-// const session = require('express-session');
-// app.use(session({
-//   secret: process.env.SESSION_SECRET || 'dev-secret',
-//   resave: false,
-//   saveUninitialized: false,
-// }));
+const session = require('express-session');
+const MongoStore = require('connect-mongo');
+
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'dev-secret',
+  resave: false,
+  saveUninitialized: false,
+  store: MongoStore.create({ mongoUrl: process.env.MONGODB_URI }),
+  cookie: { maxAge: 7 * 24 * 60 * 60 * 1000 },
+}));
 
 const connectDB = require('./config/db');
 connectDB();
 
-// TODO: uncomment to enable Google OAuth
-// const passport = require('passport');
-// require('./config/passport');
-// app.use(passport.initialize());
-// app.use(passport.session());
+const passport = require('passport');
+require('./config/passport');
+app.use(passport.initialize());
+app.use(passport.session());
 
 app.use('/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));
@@ -51,28 +53,40 @@ app.get('/api/health', (req, res) => {
 const { Message } = require('./models/Message');
 
 io.on('connection', (socket) => {
+  console.log('socket connected:', socket.id);
+
   socket.on('join-room', async (matchId, callback) => {
     await socket.join(matchId);
+    console.log(`socket ${socket.id} joined room ${matchId}`);
 
-    // Send last 50 messages so the user sees history on load
-    const history = await Message.find({ matchId })
-      .sort({ createdAt: 1 })
-      .limit(50)
-      .lean();
+    let history = [];
+    try {
+      history = await Message.find({ matchId })
+        .sort({ createdAt: 1 })
+        .limit(50)
+        .lean();
+    } catch (_) {}
 
     if (callback) callback({ status: 'ok', history });
   });
 
   socket.on('send-message', async ({ matchId, senderId, senderInitials, senderColor, content }, callback) => {
-    const msg = await Message.create({ matchId, senderId, senderInitials, senderColor, content });
+    console.log(`message from ${socket.id} in room ${matchId}:`, content);
+    const now = new Date();
 
-    io.to(matchId).emit('chat-message', {
-      id: msg._id,
+    // Try to persist — but broadcast regardless so the UI works without MongoDB
+    try {
+      await Message.create({ matchId, senderId, senderInitials, senderColor, content });
+    } catch (_) {}
+
+    // socket.to() broadcasts to everyone in the room EXCEPT the sender
+    socket.to(matchId).emit('chat-message', {
+      id: Date.now(),
       senderId,
       senderInitials,
       senderColor,
       content,
-      time: msg.createdAt,
+      time: now,
     });
 
     if (callback) callback({ status: 'ok' });
