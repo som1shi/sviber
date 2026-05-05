@@ -8,11 +8,11 @@ export default defineConfig({
     proxy: {
       // Forward /auth/* and /api/* to the Express server
       '/auth': {
-        target: 'http://localhost:5000',
+        target: 'http://localhost:5001',
         changeOrigin: true,
       },
       '/api': {
-        target: 'http://localhost:5000',
+        target: 'http://localhost:5001',
         changeOrigin: true,
       },
     },
