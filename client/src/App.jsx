@@ -10,6 +10,7 @@ import CommunityPage from './pages/CommunityPage';
 import ProjectsPage from './pages/ProjectsPage';
 import ProfilePage from './pages/ProfilePage';
 import SettingsPage from './pages/SettingsPage';
+import ChatPage from './pages/ChatPage';
 
 export default function App() {
   return (
@@ -20,7 +21,7 @@ export default function App() {
       <Route path="/app" element={<AppLayout />}>
         <Route index element={<Navigate to="/app/swipe" replace />} />
         <Route path="swipe"     element={<SwipePage />} />
-        <Route path="matches"   element={<MatchesPage />} />
+        <Route path="matches"   element={<ChatPage />} />
         <Route path="community" element={<CommunityPage />} />
         <Route path="projects"  element={<ProjectsPage />} />
         <Route path="profile"   element={<ProfilePage />} />
