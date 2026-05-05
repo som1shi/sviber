@@ -10,18 +10,18 @@ app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173', creden
 app.use(express.json());
 
 // TODO: uncomment to enable sessions (required before Google OAuth)
-// const session = require('express-session');
-// app.use(session({
-//   secret: process.env.SESSION_SECRET || 'dev-secret',
-//   resave: false,
-//   saveUninitialized: false,
-// }));
+const session = require('express-session');
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'dev-secret',
+  resave: false,
+  saveUninitialized: false,
+}));
 
-// TODO: uncomment to connect MongoDB
-// const connectDB = require('./config/db');
-// connectDB();
+//TODO: uncomment to connect MongoDB
+const connectDB = require('./config/db');
+connectDB();
 
-// TODO: uncomment to enable Google OAuth
+//TODO: uncomment to enable Google OAuth
 // const passport = require('passport');
 // require('./config/passport');
 // app.use(passport.initialize());
