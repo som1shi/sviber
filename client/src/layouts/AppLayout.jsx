@@ -1,25 +1,23 @@
-import { Outlet, useLocation } from 'react-router-dom';
+import { Outlet } from 'react-router-dom';
 import { Box } from '@mui/material';
 import Sidebar, { DRAWER_WIDTH } from '../components/Sidebar';
 
 export default function AppLayout() {
-  const { pathname } = useLocation();
-  const isChat = pathname === '/app/matches' || pathname === '/app/community';
-
   return (
     <Box sx={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
       <Sidebar />
       <Box
         component="main"
         sx={{
-          flex: 1,
-          minWidth: 0,
+          width: `calc(100vw - ${DRAWER_WIDTH}px)`,
+          ml: `${DRAWER_WIDTH}px`,
           backgroundColor: '#F2F2F2',
           display: 'flex',
           flexDirection: 'column',
-          overflow: isChat ? 'hidden' : 'auto',
+          overflow: 'hidden',
           height: '100vh',
-          p: isChat ? 0 : 4,
+          p: 0,
+          m: 0,
         }}
       >
         <Outlet />
