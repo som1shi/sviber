@@ -53,14 +53,14 @@ export default function Navbar() {
           <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
             <Button
               sx={{ color: '#1a1a1a', fontWeight: 600, fontSize: '0.9rem' }}
-              onClick={() => navigate('/app/swipe')}
+              onClick={() => navigate('/login')}
             >
               Sign in
             </Button>
             <Button
               variant="outlined"
               color="primary"
-              onClick={() => navigate('/app/swipe')}
+              onClick={() => navigate('/login')}
               sx={{ fontSize: '0.9rem' }}
             >
               Get started →
