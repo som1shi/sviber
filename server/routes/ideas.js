@@ -2,9 +2,8 @@ const express = require('express');
 const router = express.Router();
 const Idea = require('../models/Idea');
 const IdeaVote = require('../models/IdeaVote');
-const User = require('../models/User');
 const { ensureAuthenticated } = require('../middleware/auth');
-const { recalcElo } = require('../lib/elo');
+const { onIdeaVote } = require('../lib/elo');
 
 router.get('/', async (req, res) => {
   try {
@@ -57,9 +56,7 @@ router.post('/:id/vote', ensureAuthenticated, async (req, res) => {
         await existing.deleteOne();
         const field = value === 1 ? 'upvotes' : 'downvotes';
         await Idea.findByIdAndUpdate(req.params.id, { $inc: { [field]: -1, eloScore: -value } });
-        User.findByIdAndUpdate(idea.founder, { $inc: { 'elo.stats.ideaNetVotes': -value } })
-          .then(() => recalcElo(idea.founder))
-          .catch(() => {});
+        onIdeaVote(idea.founder, -value).catch(() => {});
         return res.json({ removed: true });
       } else {
         existing.value = value;
@@ -71,9 +68,7 @@ router.post('/:id/vote', ensureAuthenticated, async (req, res) => {
         });
         netDelta = value * 2;
         // Update founder's ideaNetVotes and recalc (fire-and-forget)
-        User.findByIdAndUpdate(idea.founder, { $inc: { 'elo.stats.ideaNetVotes': netDelta } })
-          .then(() => recalcElo(idea.founder))
-          .catch(() => {});
+        onIdeaVote(idea.founder, netDelta).catch(() => {});
         return res.json({ updated: true, value });
       }
     }
@@ -83,9 +78,7 @@ router.post('/:id/vote', ensureAuthenticated, async (req, res) => {
     await Idea.findByIdAndUpdate(req.params.id, { $inc: { [field]: 1, eloScore: value } });
     netDelta = value;
 
-    User.findByIdAndUpdate(idea.founder, { $inc: { 'elo.stats.ideaNetVotes': netDelta } })
-      .then(() => recalcElo(idea.founder))
-      .catch(() => {});
+    onIdeaVote(idea.founder, netDelta).catch(() => {});
 
     res.status(201).json({ created: true, value });
   } catch (err) {

@@ -1,9 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const Project = require('../models/Project');
-const User = require('../models/User');
 const { ensureAuthenticated } = require('../middleware/auth');
-const { recalcElo } = require('../lib/elo');
+const { onProjectCompleted, onProjectAbandoned, onPeerRating } = require('../lib/elo');
 
 router.get('/', ensureAuthenticated, async (req, res) => {
   try {
@@ -51,20 +50,12 @@ router.patch('/:id/status', ensureAuthenticated, async (req, res) => {
     );
     if (!project) return res.status(404).json({ error: 'Project not found' });
 
-    const contributorIds = project.contributors.map((c) => c.user);
+    const contributorIds = project.contributors.map((c) => String(c.user));
 
     if (status === 'completed') {
-      await User.updateMany(
-        { _id: { $in: contributorIds } },
-        { $inc: { 'elo.stats.projectsLaunched': 1 } }
-      );
-      await Promise.all(contributorIds.map(recalcElo));
+      onProjectCompleted(contributorIds).catch(() => {});
     } else if (status === 'abandoned') {
-      await User.updateMany(
-        { _id: { $in: contributorIds } },
-        { $inc: { 'elo.stats.projectsAbandoned': 1 } }
-      );
-      await Promise.all(contributorIds.map(recalcElo));
+      onProjectAbandoned(contributorIds).catch(() => {});
     }
 
     res.json(project);
@@ -104,10 +95,7 @@ router.post('/:id/rate', ensureAuthenticated, async (req, res) => {
     project.ratings.push({ from: req.user._id, to: toUserId, value });
     await project.save();
 
-    await User.findByIdAndUpdate(toUserId, {
-      $inc: { 'elo.stats.peerRatingSum': value, 'elo.stats.peerRatingCount': 1 },
-    });
-    await recalcElo(toUserId);
+    onPeerRating(toUserId, value).catch(() => {});
 
     res.json({ rated: true });
   } catch (err) {

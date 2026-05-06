@@ -1,9 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const Match = require('../models/Match');
-const User = require('../models/User');
 const { ensureAuthenticated } = require('../middleware/auth');
-const { recalcElo } = require('../lib/elo');
+const { onMatchCollab, onMatchPassed } = require('../lib/elo');
 
 router.get('/', ensureAuthenticated, async (req, res) => {
   try {
@@ -32,16 +31,9 @@ router.patch('/:id/status', ensureAuthenticated, async (req, res) => {
     if (!match) return res.status(404).json({ error: 'Match not found' });
 
     if (status === 'collab') {
-      await User.updateMany(
-        { _id: { $in: match.users } },
-        { $inc: { 'elo.stats.matchesCollab': 1 } }
-      );
-      await Promise.all(match.users.map(recalcElo));
+      onMatchCollab(match.users.map(String)).catch(() => {});
     } else if (status === 'passed') {
-      await User.findByIdAndUpdate(req.user._id, {
-        $inc: { 'elo.stats.matchesPassed': 1 },
-      });
-      await recalcElo(req.user._id);
+      onMatchPassed(String(req.user._id)).catch(() => {});
     }
 
     res.json(match);

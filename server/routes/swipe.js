@@ -6,7 +6,7 @@ const Match = require('../models/Match');
 const User = require('../models/User');
 const Survey = require('../models/Survey');
 const { ensureAuthenticated } = require('../middleware/auth');
-const { recalcElo } = require('../lib/elo');
+const { onSwipe } = require('../lib/elo');
 const { structuredScore, computeAndStoreCulturefit } = require('../lib/matching');
 
 router.get('/feed', ensureAuthenticated, async (req, res) => {
@@ -49,12 +49,7 @@ router.post('/', ensureAuthenticated, async (req, res) => {
       { upsert: true, new: true }
     );
 
-    // Track swipe stats for elo (fire-and-forget)
-    const statInc = { 'elo.stats.totalSwipes': 1 };
-    if (direction === 'right') statInc['elo.stats.rightSwipes'] = 1;
-    User.findByIdAndUpdate(req.user._id, { $inc: statInc })
-      .then(() => recalcElo(req.user._id))
-      .catch(() => {});
+    onSwipe(req.user._id, direction === 'right').catch(() => {});
 
     let match = null;
 
