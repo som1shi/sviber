@@ -1,10 +1,29 @@
 const express = require('express');
 const router = express.Router();
-const Anthropic = require('@anthropic-ai/sdk');
 const User = require('../models/User');
 const { recalcElo } = require('../lib/elo');
 
-const anthropic = new Anthropic();
+const SIGNALS = [
+  { pattern: /launched|shipped|live users|active users|production/i,       points: 50, reason: 'Launched a product with real users' },
+  { pattern: /co-?founder|founded|started a (company|startup)/i,           points: 40, reason: 'Founded or co-founded a startup' },
+  { pattern: /y combinator|yc (s|w)\d{2}|techstars|a16z|sequoia/i,        points: 60, reason: 'Top accelerator / investor' },
+  { pattern: /(\d[\d,]+)\s*stars|popular open.?source/i,                   points: 30, reason: 'Significant open source project' },
+  { pattern: /internship|intern at|software engineer intern/i,              points: 20, reason: 'Relevant internship experience' },
+  { pattern: /hackathon.*win|won.*hackathon|1st place.*hack|hack.*1st/i,   points: 15, reason: 'Hackathon win' },
+  { pattern: /github\.com\/\w+|open.?source contributor|\d+ contributions/i, points: 10, reason: 'Active GitHub presence' },
+];
+
+function scoreResume(text) {
+  const reasons = [];
+  let total = 0;
+  for (const signal of SIGNALS) {
+    if (signal.pattern.test(text)) {
+      total += signal.points;
+      reasons.push(signal.reason);
+    }
+  }
+  return { score: Math.min(200, total), reasons };
+}
 
 router.get('/me', async (req, res) => {
   if (!req.isAuthenticated()) return res.status(401).json({ error: 'Not logged in' });
@@ -23,7 +42,7 @@ router.put('/me', async (req, res) => {
   res.json(updated);
 });
 
-// POST /api/users/me/resume — parse resume text and set starting elo bonus
+// POST /api/users/me/resume — keyword-score resume text and set starting elo bonus
 router.post('/me/resume', async (req, res) => {
   if (!req.isAuthenticated()) return res.status(401).json({ error: 'Not logged in' });
   const { resumeText } = req.body;
@@ -32,43 +51,10 @@ router.post('/me/resume', async (req, res) => {
   }
 
   try {
-    const message = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 256,
-      messages: [{
-        role: 'user',
-        content: `Score this resume for a startup/project collaboration platform. Return ONLY valid JSON, no other text.
-
-Scoring rubric (additive, total 0–200):
-- Launched product with real users: +50
-- Founded or co-founded a startup: +40
-- YC or top accelerator alumni: +60
-- Open source project with 1k+ stars: +30
-- Relevant internship at a known company: +20
-- Hackathon wins: +15
-- Active GitHub (consistent contributions visible): +10
-
-Be conservative — most resumes score 0–80. Cap at 200.
-
-Return: {"score": <integer 0-200>, "reasons": ["<short reason>", ...]}
-
-Resume:
-${resumeText.slice(0, 4000)}`,
-      }],
-    });
-
-    let parsed;
-    try {
-      parsed = JSON.parse(message.content[0].text);
-    } catch {
-      return res.status(502).json({ error: 'Failed to parse Claude response' });
-    }
-
-    const bonus = Math.max(0, Math.min(200, Math.round(parsed.score ?? 0)));
-    await User.findByIdAndUpdate(req.user._id, { 'elo.startingBonus': bonus });
+    const { score, reasons } = scoreResume(resumeText);
+    await User.findByIdAndUpdate(req.user._id, { 'elo.startingBonus': score });
     const newTotal = await recalcElo(req.user._id);
-
-    res.json({ bonus, reasons: parsed.reasons ?? [], newTotal });
+    res.json({ bonus: score, reasons, newTotal });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

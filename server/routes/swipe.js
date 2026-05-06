@@ -7,7 +7,7 @@ const User = require('../models/User');
 const Survey = require('../models/Survey');
 const { ensureAuthenticated } = require('../middleware/auth');
 const { onSwipe } = require('../lib/elo');
-const { structuredScore, computeAndStoreCulturefit } = require('../lib/matching');
+const { structuredScore } = require('../lib/matching');
 
 router.get('/feed', ensureAuthenticated, async (req, res) => {
   try {
@@ -83,11 +83,8 @@ router.post('/', ensureAuthenticated, async (req, res) => {
             idea: ideaId,
             users: [req.user._id, other.user],
             score,
-            scorePending: true,
+            scorePending: false,
           });
-
-          // Async: ask Claude to score culture fit from text answers, update match when done
-          computeAndStoreCulturefit(match._id, req.user._id, other.user).catch(() => {});
         }
       }
     }
