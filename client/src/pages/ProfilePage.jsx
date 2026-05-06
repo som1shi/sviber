@@ -22,24 +22,24 @@ export default function ProfilePage() {
 
   if (loading) return <CircularProgress sx={{ m: 4 }} />;
 
+  const breakdown = profileUser?.elo?.breakdown ?? {};
+
   const user = {
     name: profileUser?.displayName || '',
     title: profileUser?.role || 'Builder',
     school: profileUser?.school || '',
-    elo: profileUser?.elo ?? 0,
+    elo: profileUser?.elo?.total ?? 1000,
     bio: profileUser?.bio || '',
     profilePic: profileUser?.avatar || '',
     githubLink: profileUser?.github || '',
   };
 
-  // Empty until real projects are wired up
   const projects = [];
 
-  // ELO bars — all green at 0 until real data comes in
   const eloStats = [
-    { label: 'Responsiveness', value: 0, color: '#10b981' },
-    { label: 'Ship Speed',     value: 0, color: '#10b981' },
-    { label: 'Collaboration',  value: 0, color: '#10b981' },
+    { label: 'Reliability',  value: breakdown.reliability ?? 50, color: '#10b981' },
+    { label: 'Quality',      value: breakdown.quality     ?? 50, color: '#7C5CFC' },
+    { label: 'Activity',     value: breakdown.activity    ?? 50, color: '#f59e0b' },
   ];
 
   return (
