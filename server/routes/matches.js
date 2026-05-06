@@ -20,7 +20,7 @@ router.get('/:id', ensureAuthenticated, async (req, res) => {
   try {
     const match = await Match.findOne({ _id: req.params.id, users: req.user._id })
       .populate('idea', 'title description tags')
-      .populate('users', 'displayName avatar role elo skills');
+      .populate('users', 'name profilePic elo.total skills primaryRole');
     if (!match) return res.status(404).json({ error: 'Match not found' });
     res.json(match);
   } catch (err) {
@@ -35,12 +35,14 @@ router.patch('/:id/status', ensureAuthenticated, async (req, res) => {
       return res.status(400).json({ error: 'status must be collab or passed' });
     }
 
-    const match = await Match.findOneAndUpdate(
-      { _id: req.params.id, users: req.user._id },
-      { status },
-      { new: true }
-    );
+    const match = await Match.findOne({ _id: req.params.id, users: req.user._id });
     if (!match) return res.status(404).json({ error: 'Match not found' });
+
+    match.status = status;
+    if (status === 'collab' && !match.collabStartedAt) {
+      match.collabStartedAt = new Date();
+    }
+    await match.save();
 
     if (status === 'collab') {
       onMatchCollab(match.users.map(String)).catch(() => {});

@@ -1,5 +1,7 @@
 require('dotenv').config();
 
+const path = require('path');
+const fs = require('fs');
 const express = require('express');
 const cors = require('cors');
 const { createServer } = require('http');
@@ -35,6 +37,10 @@ app.use(
 );
 app.use(express.json());
 
+const UPLOADS_ROOT = path.join(__dirname, 'uploads');
+if (!fs.existsSync(UPLOADS_ROOT)) fs.mkdirSync(UPLOADS_ROOT, { recursive: true });
+app.use('/uploads', express.static(UPLOADS_ROOT));
+
 app.use(session({
   secret: process.env.SESSION_SECRET || 'dev-secret',
   resave: false,
@@ -63,6 +69,7 @@ app.use('/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/ideas', require('./routes/ideas'));
 app.use('/api/matches', require('./routes/matches'));
+app.use('/api/uploads', require('./routes/uploads').router);
 app.use('/api/projects', require('./routes/projects'));
 app.use('/api/swipe', require('./routes/swipe'));
 app.use('/api/build', require('./routes/build'));
@@ -107,11 +114,11 @@ io.on('connection', (socket) => {
       return;
     }
 
-    console.log(`message from ${socket.id} in room ${matchId}:`, content);
     const now = new Date();
 
     try {
       await Message.create({ matchId, senderId, senderInitials, senderColor, content });
+      await Match.findByIdAndUpdate(matchId, { lastMessageAt: now }).catch(() => {});
     } catch (_) {}
 
     socket.to(matchId).emit('chat-message', {
