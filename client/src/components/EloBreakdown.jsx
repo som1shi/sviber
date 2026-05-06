@@ -1,6 +1,6 @@
 import { Box, Typography, Paper, LinearProgress } from '@mui/material';
 
-export default function EloBreakdown({ elo, stats, history }) {
+export default function EloBreakdown({ elo, stats }) {
   return (
     <Paper
       sx={{

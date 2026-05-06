@@ -1,10 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Box, Typography, IconButton, Chip } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import FavoriteIcon from '@mui/icons-material/Favorite';
 import BookmarkIcon from '@mui/icons-material/Bookmark';
 
-const ideas = [
+const API = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+
+const demoIdeas = [
   {
     id: 1,
     title: 'AI meeting notes that actually ship actions',
@@ -32,12 +35,64 @@ const ideas = [
 ];
 
 export default function SwipePage() {
+  const navigate = useNavigate();
+  const [ideas, setIdeas] = useState(demoIdeas);
   const [current, setCurrent] = useState(0);
-  const [gone, setGone] = useState([]);
+  const [matchNotice, setMatchNotice] = useState('');
 
-  const handleSwipe = (direction) => {
-    setGone((prev) => [...prev, { id: ideas[current].id, direction }]);
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadIdeas() {
+      try {
+        const res = await fetch(`${API}/api/ideas?tab=hot`, { credentials: 'include' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!ignore && Array.isArray(data) && data.length > 0) {
+          setIdeas(data.map((idea) => ({
+            id: idea._id,
+            title: idea.title,
+            pitch: idea.description,
+            tags: idea.tags || [],
+            heat: idea.eloScore || 80,
+            matchScore: 0,
+            isPersisted: true,
+          })));
+        }
+      } catch {
+        // Keep demo cards available when the API is not running locally.
+      }
+    }
+
+    loadIdeas();
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  const handleSwipe = async (direction) => {
+    const swipedIdea = ideas[current];
     setCurrent((prev) => prev + 1);
+
+    if (!swipedIdea?.isPersisted) return;
+
+    try {
+      const res = await fetch(`${API}/api/swipe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ ideaId: swipedIdea.id, direction }),
+      });
+      if (!res.ok) return;
+
+      const data = await res.json();
+      if (data.match?._id) {
+        setMatchNotice('Match found. Chat is unlocked.');
+        navigate(`/app/matches/${data.match._id}`, { state: { match: data.match } });
+      }
+    } catch {
+      setMatchNotice('');
+    }
   };
 
   const idea = ideas[current];
@@ -55,6 +110,9 @@ export default function SwipePage() {
     <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 4, gap: 4 }}>
       <Typography variant="h4" fontWeight={700}>Swipe</Typography>
       <Typography sx={{ color: '#6b7280', mt: -3 }}>Discover startup ideas and swipe to build.</Typography>
+      {matchNotice && (
+        <Typography sx={{ color: '#047857', fontWeight: 700, mt: -2 }}>{matchNotice}</Typography>
+      )}
 
       {/* Card */}
       <Box
