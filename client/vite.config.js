@@ -15,6 +15,16 @@ export default defineConfig({
         target: 'http://localhost:5001',
         changeOrigin: true,
       },
+      '/uploads': {
+        target: 'http://localhost:5001',
+        changeOrigin: true,
+      },
+      // Socket.IO HTTP + WebSocket polling/upgrade
+      '/socket.io': {
+        target: 'http://localhost:5001',
+        changeOrigin: true,
+        ws: true,
+      },
     },
   },
 });

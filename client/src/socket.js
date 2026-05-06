@@ -1,9 +1,12 @@
 import { io } from 'socket.io-client';
 
-const socket = io(import.meta.env.VITE_API_URL || 'http://localhost:3001', {
+/** In dev, omit URL so we hit the Vite dev server; proxy forwards `/socket.io` to the API. */
+const URL = import.meta.env.VITE_API_URL || undefined;
+
+const socket = io(URL, {
+  path: '/socket.io',
   autoConnect: true,
-  ackTimeout: 10000,
-  retries: 3,
+  withCredentials: true,
 });
 
 export default socket;
