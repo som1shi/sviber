@@ -43,6 +43,8 @@ router.post('/', ensureAuthenticated, async (req, res) => {
       return res.status(403).json({ error: 'Cannot swipe on your own idea' });
     }
 
+    const previousSwipe = await Swipe.findOne({ user: req.user._id, idea: ideaId });
+
     const swipe = await Swipe.findOneAndUpdate(
       { user: req.user._id, idea: ideaId },
       { direction },
@@ -54,7 +56,10 @@ router.post('/', ensureAuthenticated, async (req, res) => {
     let match = null;
 
     if (direction === 'right') {
-      await Idea.findByIdAndUpdate(ideaId, { $inc: { builderCount: 1 } });
+      // Only increment builderCount if this is a new right swipe (not changing from right to right)
+      if (previousSwipe?.direction !== 'right') {
+        await Idea.findByIdAndUpdate(ideaId, { $inc: { builderCount: 1 } });
+      }
 
       const otherSwipes = await Swipe.find({
         idea: ideaId,
@@ -85,6 +90,11 @@ router.post('/', ensureAuthenticated, async (req, res) => {
             score,
             scorePending: false,
           });
+
+          match = await match.populate([
+            { path: 'idea', select: 'title description tags' },
+            { path: 'users', select: 'displayName avatar role elo skills' },
+          ]);
         }
       }
     }

@@ -8,9 +8,21 @@ router.get('/', ensureAuthenticated, async (req, res) => {
   try {
     const matches = await Match.find({ users: req.user._id })
       .populate('idea', 'title description tags')
-      .populate('users', 'displayName avatar elo.total elo.breakdown')
+      .populate('users', 'displayName avatar role elo skills')
       .sort({ createdAt: -1 });
     res.json(matches);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/:id', ensureAuthenticated, async (req, res) => {
+  try {
+    const match = await Match.findOne({ _id: req.params.id, users: req.user._id })
+      .populate('idea', 'title description tags')
+      .populate('users', 'displayName avatar role elo skills');
+    if (!match) return res.status(404).json({ error: 'Match not found' });
+    res.json(match);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

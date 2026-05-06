@@ -1,12 +1,12 @@
+/* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useState, useEffect } from 'react';
 
 const AuthContext = createContext(null);
+const API = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-
-  const API = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
   useEffect(() => {
     fetch(`${API}/auth/current-user`, { credentials: 'include' })
