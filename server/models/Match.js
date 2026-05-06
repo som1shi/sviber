@@ -7,12 +7,15 @@ const matchSchema = new mongoose.Schema({
     validate: { validator: (v) => v.length === 2, message: 'Match must have exactly 2 users' },
   },
   score: {
-    ideaAlignment: { type: Number, default: 0 },
-    skillsFit: { type: Number, default: 0 },
-    eloCompatibility: { type: Number, default: 0 },
-    activity: { type: Number, default: 0 },
-    total: { type: Number, default: 0 },
+    ideaAlignment:        { type: Number, default: 0 },
+    skillsComplementarity:{ type: Number, default: 0 },
+    visionAlignment:      { type: Number, default: 0 },
+    commitmentAlignment:  { type: Number, default: 0 },
+    eloCompatibility:     { type: Number, default: 0 },
+    culturefit:           { type: Number, default: null },
+    total:                { type: Number, default: 0 },
   },
+  scorePending: { type: Boolean, default: true },
   status: { type: String, enum: ['pending', 'collab', 'passed'], default: 'pending' },
 }, { timestamps: true });
 

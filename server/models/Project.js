@@ -20,6 +20,11 @@ const projectSchema = new mongoose.Schema({
   status: { type: String, enum: ['active', 'paused', 'completed', 'abandoned'], default: 'active' },
   tasks: [taskSchema],
   githubRepo: { type: String },
+  ratings: [{
+    from:  { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    to:    { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    value: { type: Number, min: 1, max: 5, required: true },
+  }],
 }, { timestamps: true });
 
 module.exports = mongoose.model('Project', projectSchema);

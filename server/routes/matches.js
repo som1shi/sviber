@@ -1,13 +1,15 @@
 const express = require('express');
 const router = express.Router();
 const Match = require('../models/Match');
+const User = require('../models/User');
 const { ensureAuthenticated } = require('../middleware/auth');
+const { recalcElo } = require('../lib/elo');
 
 router.get('/', ensureAuthenticated, async (req, res) => {
   try {
     const matches = await Match.find({ users: req.user._id })
       .populate('idea', 'title description tags')
-      .populate('users', 'name profilePic elo.total skills')
+      .populate('users', 'displayName avatar elo.total elo.breakdown')
       .sort({ createdAt: -1 });
     res.json(matches);
   } catch (err) {
@@ -21,12 +23,27 @@ router.patch('/:id/status', ensureAuthenticated, async (req, res) => {
     if (!['collab', 'passed'].includes(status)) {
       return res.status(400).json({ error: 'status must be collab or passed' });
     }
+
     const match = await Match.findOneAndUpdate(
       { _id: req.params.id, users: req.user._id },
       { status },
       { new: true }
     );
     if (!match) return res.status(404).json({ error: 'Match not found' });
+
+    if (status === 'collab') {
+      await User.updateMany(
+        { _id: { $in: match.users } },
+        { $inc: { 'elo.stats.matchesCollab': 1 } }
+      );
+      await Promise.all(match.users.map(recalcElo));
+    } else if (status === 'passed') {
+      await User.findByIdAndUpdate(req.user._id, {
+        $inc: { 'elo.stats.matchesPassed': 1 },
+      });
+      await recalcElo(req.user._id);
+    }
+
     res.json(match);
   } catch (err) {
     res.status(500).json({ error: err.message });
