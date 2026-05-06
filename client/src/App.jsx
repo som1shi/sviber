@@ -26,7 +26,8 @@ export default function App() {
       <Route path="/app" element={<AppLayout />}>
         <Route index element={<Navigate to="/app/swipe" replace />} />
         <Route path="swipe"          element={<SwipePage />} />
-        <Route path="matches"        element={<ChatPage />} />
+        <Route path="matches"        element={<MatchesPage />} />
+        <Route path="matches/:matchId" element={<ChatPage />} />
         <Route path="community"      element={<CommunityPage />} />
         <Route path="projects"       element={<ProjectsPage />} />
         <Route path="profile"        element={<ProfilePage />} />

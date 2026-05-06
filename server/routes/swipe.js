@@ -7,15 +7,19 @@ const User = require('../models/User');
 const { ensureAuthenticated } = require('../middleware/auth');
 
 function computeMatchScore(userA, userB) {
-  const eloCompatibility = Math.max(0, 100 - Math.abs(userA.elo.total - userB.elo.total) / 10);
+  const eloA = typeof userA.elo === 'number' ? userA.elo : userA.elo?.total || 0;
+  const eloB = typeof userB.elo === 'number' ? userB.elo : userB.elo?.total || 0;
+  const skillsA = Array.isArray(userA.skills) ? userA.skills : [];
+  const skillsB = Array.isArray(userB.skills) ? userB.skills : [];
+  const eloCompatibility = Math.max(0, 100 - Math.abs(eloA - eloB) / 10);
   const skillsFit = (() => {
-    const a = new Set(userA.skills);
-    const b = new Set(userB.skills);
+    const a = new Set(skillsA);
+    const b = new Set(skillsB);
     const shared = [...a].filter((s) => b.has(s)).length;
     const total = new Set([...a, ...b]).size;
     return total === 0 ? 50 : Math.round((1 - shared / total) * 100);
   })();
-  const activity = Math.min(100, (userA.elo.total + userB.elo.total) / 2);
+  const activity = Math.min(100, (eloA + eloB) / 2);
   const total = Math.round((100 + eloCompatibility + skillsFit + activity) / 4);
   return { ideaAlignment: 100, eloCompatibility: Math.round(eloCompatibility), skillsFit, activity: Math.round(activity), total };
 }
@@ -27,6 +31,7 @@ router.post('/', ensureAuthenticated, async (req, res) => {
       return res.status(400).json({ error: 'ideaId and direction (right|left|up) required' });
     }
 
+    const previousSwipe = await Swipe.findOne({ user: req.user._id, idea: ideaId });
     const swipe = await Swipe.findOneAndUpdate(
       { user: req.user._id, idea: ideaId },
       { direction },
@@ -36,7 +41,12 @@ router.post('/', ensureAuthenticated, async (req, res) => {
     let match = null;
 
     if (direction === 'right') {
-      await Idea.findByIdAndUpdate(ideaId, { $inc: { builderCount: 1 } });
+      const idea = await Idea.findById(ideaId);
+      if (!idea) return res.status(404).json({ error: 'Idea not found' });
+
+      if (previousSwipe?.direction !== 'right') {
+        await Idea.findByIdAndUpdate(ideaId, { $inc: { builderCount: 1 } });
+      }
 
       const otherSwipes = await Swipe.find({
         idea: ideaId,
@@ -58,6 +68,11 @@ router.post('/', ensureAuthenticated, async (req, res) => {
           users: [req.user._id, other.user],
           score,
         });
+
+        match = await match.populate([
+          { path: 'idea', select: 'title description tags' },
+          { path: 'users', select: 'displayName avatar role elo skills' },
+        ]);
       }
     }
 

@@ -57,11 +57,18 @@ app.get('/api/health', (req, res) => {
 
 // ─── Socket.IO ────────────────────────────────────────────────────────────────
 const { Message } = require('./models/Message');
+const Match = require('./models/Match');
 
 io.on('connection', (socket) => {
   console.log('socket connected:', socket.id);
 
   socket.on('join-room', async (matchId, callback) => {
+    const match = await Match.findById(matchId).select('_id').lean().catch(() => null);
+    if (!match) {
+      if (callback) callback({ status: 'locked', error: 'Chat only starts after a founder match exists.' });
+      return;
+    }
+
     await socket.join(matchId);
     console.log(`socket ${socket.id} joined room ${matchId}`);
 
@@ -77,6 +84,12 @@ io.on('connection', (socket) => {
   });
 
   socket.on('send-message', async ({ matchId, senderId, senderInitials, senderColor, content }, callback) => {
+    const match = await Match.findById(matchId).select('_id').lean().catch(() => null);
+    if (!match) {
+      if (callback) callback({ status: 'locked', error: 'Chat only starts after a founder match exists.' });
+      return;
+    }
+
     console.log(`message from ${socket.id} in room ${matchId}:`, content);
     const now = new Date();
 
