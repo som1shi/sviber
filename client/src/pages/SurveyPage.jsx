@@ -147,6 +147,16 @@ export default function SurveyPage() {
       }}
     >
       <Box sx={{ width: '100%', maxWidth: 560 }}>
+        {/* Exit */}
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 3 }}>
+          <Button
+            onClick={() => navigate('/app/settings')}
+            sx={{ color: 'rgba(255,255,255,0.35)', textTransform: 'none', fontFamily: '"DM Sans", sans-serif', fontSize: '0.85rem' }}
+          >
+            Exit survey
+          </Button>
+        </Box>
+
         {/* Progress */}
         <Box sx={{ mb: 4 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
