@@ -12,8 +12,8 @@ export default function AppLayout() {
       <Box
         component="main"
         sx={{
-          width: `calc(100vw - ${DRAWER_WIDTH}px)`,
-          ml: `${DRAWER_WIDTH}px`,
+          flex: 1,
+          minWidth: 0,
           backgroundColor: '#F2F2F2',
           display: 'flex',
           flexDirection: 'column',
