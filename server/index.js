@@ -2,22 +2,38 @@ require('dotenv').config();
 
 const express = require('express');
 const cors = require('cors');
+const { createServer } = require('http');
+const { Server } = require('socket.io');
+
+const session = require('express-session');
+const MongoStore = require('connect-mongo');
 
 const app = express();
-const PORT = process.env.PORT || 5001;
+const httpServer = createServer(app);
+const PORT = process.env.PORT || 5000;
 
-app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173', credentials: true }));
+// Trust Render's proxy so secure cookies work over HTTPS
+app.set('trust proxy', 1);
+
+const io = new Server(httpServer, {
+  cors: { origin: '*' },
+});
+
+app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5175', credentials: true }));
 app.use(express.json());
 
-// TODO: uncomment to enable sessions (required before Google OAuth)
-const session = require('express-session');
 app.use(session({
   secret: process.env.SESSION_SECRET || 'dev-secret',
   resave: false,
   saveUninitialized: false,
+  store: MongoStore.create({ mongoUrl: process.env.MONGODB_URI }),
+  cookie: {
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    secure: process.env.NODE_ENV === 'production',
+  },
 }));
 
-//TODO: uncomment to connect MongoDB
 const connectDB = require('./config/db');
 connectDB();
 
@@ -38,7 +54,51 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-app.listen(PORT, () => {
+// ─── Socket.IO ────────────────────────────────────────────────────────────────
+const { Message } = require('./models/Message');
+
+io.on('connection', (socket) => {
+  console.log('socket connected:', socket.id);
+
+  socket.on('join-room', async (matchId, callback) => {
+    await socket.join(matchId);
+    console.log(`socket ${socket.id} joined room ${matchId}`);
+
+    let history = [];
+    try {
+      history = await Message.find({ matchId })
+        .sort({ createdAt: 1 })
+        .limit(50)
+        .lean();
+    } catch (_) {}
+
+    if (callback) callback({ status: 'ok', history });
+  });
+
+  socket.on('send-message', async ({ matchId, senderId, senderInitials, senderColor, content }, callback) => {
+    console.log(`message from ${socket.id} in room ${matchId}:`, content);
+    const now = new Date();
+
+    try {
+      await Message.create({ matchId, senderId, senderInitials, senderColor, content });
+    } catch (_) {}
+
+    socket.to(matchId).emit('chat-message', {
+      id: Date.now(),
+      senderId,
+      senderInitials,
+      senderColor,
+      content,
+      time: now,
+    });
+
+    if (callback) callback({ status: 'ok' });
+  });
+
+  socket.on('disconnect', () => {});
+});
+
+httpServer.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 }).on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
