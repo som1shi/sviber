@@ -14,6 +14,12 @@ router.post('/', ensureAuthenticated, async (req, res) => {
       return res.status(400).json({ error: 'ideaId and direction (right|left|up) required' });
     }
 
+    const idea = await Idea.findById(ideaId).select('founder').lean();
+    if (!idea) return res.status(404).json({ error: 'Idea not found' });
+    if (String(idea.founder) === String(req.user._id)) {
+      return res.status(400).json({ error: 'You cannot swipe your own idea' });
+    }
+
     const now = new Date();
     const prev = await Swipe.findOne({ user: req.user._id, idea: ideaId });
     const swipe = await Swipe.findOneAndUpdate(
@@ -37,8 +43,6 @@ router.post('/', ensureAuthenticated, async (req, res) => {
     const matchesCreated = [];
 
     if (direction === 'right') {
-      const idea = await Idea.findById(ideaId);
-      if (!idea) return res.status(404).json({ error: 'Idea not found' });
       const otherSwipes = await Swipe.find({
         idea: ideaId,
         direction: 'right',
@@ -68,13 +72,17 @@ router.post('/', ensureAuthenticated, async (req, res) => {
         );
 
         try {
-          const match = await Match.create({
+          const createdMatch = await Match.create({
             idea: ideaId,
             pairKey: pk,
             users: orderedUsers,
             score,
           });
-          matchesCreated.push(match);
+          const populatedMatch = await Match.findById(createdMatch._id)
+            .populate('idea', 'title description tags')
+            .populate('users', 'displayName name avatar profilePic role primaryRole elo skills')
+            .lean();
+          matchesCreated.push(populatedMatch || createdMatch);
         } catch (createErr) {
           if (createErr.code === 11000) continue; // race: duplicate pairKey
           throw createErr;
@@ -82,7 +90,7 @@ router.post('/', ensureAuthenticated, async (req, res) => {
       }
     }
 
-    res.json({ swipe, matches: matchesCreated });
+    res.json({ swipe, matches: matchesCreated, match: matchesCreated[0] || null });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

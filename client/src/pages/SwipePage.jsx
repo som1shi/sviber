@@ -45,7 +45,10 @@ export default function SwipePage() {
 
     async function loadIdeas() {
       try {
-        const res = await fetch(`${API}/api/ideas?tab=hot`, { credentials: 'include' });
+        const res = await fetch(
+          `${API}/api/ideas?tab=hot&excludeOwn=true&excludeSwiped=true`,
+          { credentials: 'include' }
+        );
         if (!res.ok) return;
         const data = await res.json();
         if (!ignore && Array.isArray(data) && data.length > 0) {
@@ -86,9 +89,10 @@ export default function SwipePage() {
       if (!res.ok) return;
 
       const data = await res.json();
-      if (data.match?._id) {
+      const firstMatch = data.match || data.matches?.[0];
+      if (firstMatch?._id) {
         setMatchNotice('Match found. Chat is unlocked.');
-        navigate(`/app/matches/${data.match._id}`, { state: { match: data.match } });
+        navigate(`/app/matches/${firstMatch._id}`, { state: { match: firstMatch } });
       }
     } catch {
       setMatchNotice('');
