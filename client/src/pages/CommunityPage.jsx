@@ -1,100 +1,31 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Box, Typography, Tabs, Tab, Card, CardContent,
-  Avatar, Chip, IconButton, Button, Divider
+  Avatar, Chip, IconButton, Button, Divider, Dialog, DialogTitle, DialogContent,
+  DialogActions, TextField, CircularProgress, Alert
 } from '@mui/material';
 import {
   KeyboardArrowUp, KeyboardArrowDown, Star, StarBorder,
   Build, Add, LocalFireDepartment
 } from '@mui/icons-material';
+import { useAuth } from '../context/AuthContext';
 
 const TABS = ['Hot', 'New', 'Building', 'Mine'];
+const API = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
-const mockIdeas = [
-  {
-    id: 1,
-    author: 'Ariel S.',
-    authorElo: 847,
-    role: 'Founder',
-    title: 'BOGO Optimizer — never pay full price again',
-    description: 'ML model that tracks every BOGO deal across 200+ grocery chains, tells you exactly when to bulk-buy Oreos. IRR on snacks: 340%.',
-    heat: 94,
-    upvotes: 312,
-    builders: 41,
-    tags: ['AI', 'Finance'],
-    saved: false,
-    building: false,
-    isNew: false,
-  },
-  {
-    id: 2,
-    author: 'Rishabh A.',
-    authorElo: 612,
-    role: 'Builder',
-    title: "LinkedIn but for your dog — PawdIn",
-    description: "Professional networking for dogs. Endorse your golden retriever for 'fetching' and 'squirrel awareness'. 500+ connections or you're a bad owner.",
-    heat: 88,
-    upvotes: 245,
-    builders: 18,
-    tags: ['Social', 'Pets'],
-    saved: true,
-    building: false,
-    isNew: false,
-  },
-  {
-    id: 3,
-    author: 'Serena H.',
-    authorElo: 390,
-    role: 'Hacker',
-    title: "Uber but for borrowing your neighbor's stuff",
-    description: "Why buy a drill you'll use once? Rent Dave's drill for $2. Dave has 47 drills. Dave has a problem. Dave needs this app.",
-    heat: 76,
-    upvotes: 189,
-    builders: 12,
-    tags: ['Marketplace', 'Sustainability'],
-    saved: false,
-    building: false,
-    isNew: false,
-  },
-  {
-    id: 4,
-    author: 'Maya K.',
-    authorElo: 455,
-    role: 'Hacker',
-    title: "AI that replies to your landlord so you don't have to",
-    description: "Trained on 10,000 passive-aggressive landlord emails. Responds politely, legally, and 40% more effectively than you would while angry.",
-    heat: 71,
-    upvotes: 156,
-    builders: 9,
-    tags: ['AI', 'Legal'],
-    saved: false,
-    building: false,
-    isNew: true,
-  },
-  {
-    id: 5,
-    author: 'Justin T.',
-    authorElo: 520,
-    role: 'Builder',
-    title: 'Yelp for your coworkers',
-    description: '1-5 stars. Leave anonymous reviews. "Greg microwaves fish daily, 1 star." Finally hold people accountable for the thing.',
-    heat: 65,
-    upvotes: 98,
-    builders: 6,
-    tags: ['Social', 'Productivity'],
-    saved: false,
-    building: false,
-    isNew: true,
-  },
-];
+const roleColors = { Founder: '#16a34a', Builder: '#2563eb', Hacker: '#9333ea' };
 
-const roleColors = {
-  Founder: '#16a34a',
-  Builder: '#2563eb',
-  Hacker: '#9333ea',
-};
+function initials(name) {
+  return String(name || 'Founder')
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase();
+}
 
-function IdeaCard({ idea, onUpvote, onToggleSave, onToggleBuild }) {
+function IdeaCard({ idea, onUpvote, onDownvote, onToggleSave, onToggleBuild }) {
   return (
     <Card
       elevation={0}
@@ -111,7 +42,7 @@ function IdeaCard({ idea, onUpvote, onToggleSave, onToggleBuild }) {
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Avatar sx={{ width: 28, height: 28, fontSize: 12, bgcolor: '#111' }}>
-              {idea.author.split(' ').map(n => n[0]).join('')}
+              {initials(idea.author)}
             </Avatar>
             <Typography sx={{ fontWeight: 600, fontSize: 13 }}>{idea.author}</Typography>
             <Typography sx={{ fontSize: 12, color: '#9ca3af' }}>{idea.authorElo}</Typography>
@@ -121,8 +52,8 @@ function IdeaCard({ idea, onUpvote, onToggleSave, onToggleBuild }) {
               sx={{
                 fontSize: 11,
                 height: 20,
-                bgcolor: `${roleColors[idea.role]}15`,
-                color: roleColors[idea.role],
+                bgcolor: `${roleColors[idea.role] || '#6b7280'}15`,
+                color: roleColors[idea.role] || '#6b7280',
                 fontWeight: 600,
                 border: 'none',
               }}
@@ -165,7 +96,7 @@ function IdeaCard({ idea, onUpvote, onToggleSave, onToggleBuild }) {
             <Typography sx={{ fontWeight: 700, fontSize: 13, minWidth: 24, textAlign: 'center' }}>
               {idea.upvotes}
             </Typography>
-            <IconButton size="small" sx={{ p: 0.5 }}>
+            <IconButton size="small" onClick={() => onDownvote(idea.id)} sx={{ p: 0.5 }}>
               <KeyboardArrowDown sx={{ fontSize: 18 }} />
             </IconButton>
           </Box>
@@ -199,15 +130,90 @@ function IdeaCard({ idea, onUpvote, onToggleSave, onToggleBuild }) {
 }
 
 export default function CommunityPage() {
+  const { user } = useAuth();
   const [tab, setTab] = useState(0);
-  const [ideas, setIdeas] = useState(mockIdeas);
+  const [ideas, setIdeas] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [postOpen, setPostOpen] = useState(false);
+  const [postTitle, setPostTitle] = useState('');
+  const [postDescription, setPostDescription] = useState('');
+  const [postTags, setPostTags] = useState('');
+  const [posting, setPosting] = useState(false);
+  const [editIdea, setEditIdea] = useState(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editTags, setEditTags] = useState('');
+  const [editProjectUrl, setEditProjectUrl] = useState('');
+  const [editImageFile, setEditImageFile] = useState(null);
+  const [editing, setEditing] = useState(false);
 
   const totalUpvotes = ideas.reduce((sum, i) => sum + i.upvotes, 0);
   const wantToBuild = ideas.reduce((sum, i) => sum + i.builders, 0);
-  const myElo = 340;
+  const myElo = user?.elo?.total || user?.elo || 0;
+
+  const tabName = useMemo(() => TABS[tab].toLowerCase(), [tab]);
+
+  const loadIdeas = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      const res = await fetch(`${API}/api/ideas?tab=${tabName}`, { credentials: 'include' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || 'Failed to load ideas');
+      }
+      const data = await res.json();
+      const mapped = (Array.isArray(data) ? data : []).map((idea) => ({
+        id: idea._id,
+        founderId: idea.founder?._id,
+        author: idea.founder?.name || 'Founder',
+        authorElo: idea.founder?.elo?.total ?? 0,
+        role: idea.founder?.title || 'Founder',
+        title: idea.title,
+        description: idea.description,
+        heat: idea.eloScore || 0,
+        upvotes: idea.upvotes || 0,
+        downvotes: idea.downvotes || 0,
+        builders: idea.builderCount || 0,
+        tags: idea.tags || [],
+        projectUrl: idea.projectUrl || '',
+        imageUrl: idea.imageUrl || '',
+        saved: false,
+        building: idea.status === 'building',
+        isNew: Date.now() - new Date(idea.createdAt).getTime() < 24 * 60 * 60 * 1000,
+      }));
+      setIdeas(mapped);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadIdeas();
+  }, [tabName]);
 
   const handleUpvote = (id) => {
-    setIdeas(prev => prev.map(i => i.id === id ? { ...i, upvotes: i.upvotes + 1 } : i));
+    fetch(`${API}/api/ideas/${id}/vote`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ value: 1 }),
+    })
+      .then(() => loadIdeas())
+      .catch(() => {});
+  };
+  const handleDownvote = (id) => {
+    fetch(`${API}/api/ideas/${id}/vote`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ value: -1 }),
+    })
+      .then(() => loadIdeas())
+      .catch(() => {});
   };
   const handleToggleSave = (id) => {
     setIdeas(prev => prev.map(i => i.id === id ? { ...i, saved: !i.saved } : i));
@@ -216,13 +222,103 @@ export default function CommunityPage() {
     setIdeas(prev => prev.map(i => i.id === id ? { ...i, building: !i.building, builders: i.building ? i.builders - 1 : i.builders + 1 } : i));
   };
 
-  const filteredIdeas = tab === 3
-    ? ideas.filter(i => i.saved)
-    : tab === 2
+  const filteredIdeas = tabName === 'mine'
+    ? ideas
+    : tabName === 'building'
     ? ideas.filter(i => i.building)
-    : tab === 1
-    ? [...ideas].sort((a, b) => b.id - a.id)
     : [...ideas].sort((a, b) => b.heat - a.heat);
+
+  const handlePostIdea = async () => {
+    try {
+      setPosting(true);
+      setError('');
+      const res = await fetch(`${API}/api/ideas`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          title: postTitle,
+          description: postDescription,
+          tags: postTags,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || 'Failed to post idea');
+      }
+      setPostOpen(false);
+      setPostTitle('');
+      setPostDescription('');
+      setPostTags('');
+      setTab(1);
+      loadIdeas();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setPosting(false);
+    }
+  };
+
+  const openEdit = (idea) => {
+    setEditIdea(idea);
+    setEditTitle(idea.title || '');
+    setEditDescription(idea.description || '');
+    setEditTags((idea.tags || []).join(', '));
+    setEditProjectUrl(idea.projectUrl || '');
+    setEditImageFile(null);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editIdea) return;
+    try {
+      setEditing(true);
+      setError('');
+
+      let imageUpload;
+      let imageUrl = editIdea.imageUrl || '';
+      if (editImageFile) {
+        const fd = new FormData();
+        fd.append('file', editImageFile);
+        const uploadRes = await fetch(`${API}/api/uploads?kind=idea`, {
+          method: 'POST',
+          credentials: 'include',
+          body: fd,
+        });
+        if (!uploadRes.ok) {
+          const body = await uploadRes.json().catch(() => ({}));
+          throw new Error(body.error || 'Image upload failed');
+        }
+        const uploaded = await uploadRes.json();
+        imageUpload = uploaded._id;
+        imageUrl = `${API}${uploaded.url}`;
+      }
+
+      const res = await fetch(`${API}/api/ideas/${editIdea.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          title: editTitle,
+          description: editDescription,
+          tags: editTags,
+          projectUrl: editProjectUrl,
+          imageUpload,
+          imageUrl,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || 'Failed to update post');
+      }
+
+      setEditIdea(null);
+      loadIdeas();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setEditing(false);
+    }
+  };
 
   return (
     <Box>
@@ -238,6 +334,7 @@ export default function CommunityPage() {
         <Button
           variant="contained"
           startIcon={<Add />}
+          onClick={() => setPostOpen(true)}
           sx={{
             bgcolor: '#111',
             color: '#fff',
@@ -251,7 +348,9 @@ export default function CommunityPage() {
         </Button>
       </Box>
 
-      <Box sx={{ display: 'flex', gap: 4, mb: 3 }}>
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+
+      <Box sx={{ display: 'flex', gap: 5, mb: 3 }}>
         {[
           { label: 'total upvotes', value: totalUpvotes },
           { label: 'want to build', value: wantToBuild },
@@ -277,23 +376,142 @@ export default function CommunityPage() {
         {TABS.map(t => <Tab key={t} label={t} />)}
       </Tabs>
 
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {filteredIdeas.length === 0 ? (
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.25, pb: 2 }}>
+        {loading && (
+          <Box sx={{ py: 8, display: 'flex', justifyContent: 'center' }}>
+            <CircularProgress />
+          </Box>
+        )}
+        {!loading && filteredIdeas.length === 0 ? (
           <Typography sx={{ color: '#9ca3af', textAlign: 'center', py: 6 }}>
             Nothing here yet.
           </Typography>
-        ) : (
+        ) : !loading && (
           filteredIdeas.map(idea => (
-            <IdeaCard
-              key={idea.id}
-              idea={idea}
-              onUpvote={handleUpvote}
-              onToggleSave={handleToggleSave}
-              onToggleBuild={handleToggleBuild}
-            />
+            <Box key={idea.id}>
+              <IdeaCard
+                idea={idea}
+                onUpvote={handleUpvote}
+                onDownvote={handleDownvote}
+                onToggleSave={handleToggleSave}
+                onToggleBuild={handleToggleBuild}
+              />
+              {idea.imageUrl && (
+                <Box sx={{ mt: -1.5, mb: 1, px: 2 }}>
+                  <Box
+                    component="img"
+                    src={idea.imageUrl}
+                    alt={idea.title}
+                    sx={{
+                      width: '100%',
+                      maxHeight: 320,
+                      objectFit: 'cover',
+                      borderRadius: 2,
+                      border: '1px solid #e5e7eb',
+                      backgroundColor: '#f9fafb',
+                    }}
+                  />
+                </Box>
+              )}
+              {(idea.projectUrl || String(idea.founderId) === String(user?._id || user?.id)) && (
+                <Box sx={{ mt: -0.5, mb: 2.5, px: 2, display: 'flex', gap: 1 }}>
+                  {idea.projectUrl && (
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      href={idea.projectUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      sx={{ textTransform: 'none' }}
+                    >
+                      Open project
+                    </Button>
+                  )}
+                  {String(idea.founderId) === String(user?._id || user?.id) && (
+                    <Button
+                      size="small"
+                      variant="text"
+                      onClick={() => openEdit(idea)}
+                      sx={{ textTransform: 'none' }}
+                    >
+                      Edit post
+                    </Button>
+                  )}
+                </Box>
+              )}
+            </Box>
           ))
         )}
       </Box>
+
+      <Dialog open={postOpen} onClose={() => setPostOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Post an idea</DialogTitle>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: 1 }}>
+          <TextField
+            label="Title"
+            value={postTitle}
+            onChange={(e) => setPostTitle(e.target.value)}
+            fullWidth
+          />
+          <TextField
+            label="Description"
+            value={postDescription}
+            onChange={(e) => setPostDescription(e.target.value)}
+            multiline
+            minRows={4}
+            fullWidth
+          />
+          <TextField
+            label="Tags (comma separated)"
+            value={postTags}
+            onChange={(e) => setPostTags(e.target.value)}
+            placeholder="AI, Fintech, SaaS"
+            fullWidth
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPostOpen(false)} disabled={posting}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={handlePostIdea}
+            disabled={posting || !postTitle.trim() || !postDescription.trim()}
+          >
+            {posting ? 'Posting...' : 'Post'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(editIdea)} onClose={() => setEditIdea(null)} fullWidth maxWidth="sm">
+        <DialogTitle>Edit project post</DialogTitle>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: 1 }}>
+          <TextField label="Title" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} fullWidth />
+          <TextField
+            label="Description"
+            value={editDescription}
+            onChange={(e) => setEditDescription(e.target.value)}
+            multiline
+            minRows={4}
+            fullWidth
+          />
+          <TextField label="Tags (comma separated)" value={editTags} onChange={(e) => setEditTags(e.target.value)} fullWidth />
+          <TextField label="Project URL" value={editProjectUrl} onChange={(e) => setEditProjectUrl(e.target.value)} fullWidth />
+          <Button variant="outlined" component="label">
+            {editImageFile ? `New image: ${editImageFile.name}` : 'Replace image (optional)'}
+            <input
+              hidden
+              type="file"
+              accept="image/*"
+              onChange={(e) => setEditImageFile(e.target.files?.[0] || null)}
+            />
+          </Button>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditIdea(null)} disabled={editing}>Cancel</Button>
+          <Button variant="contained" onClick={handleSaveEdit} disabled={editing || !editTitle.trim() || !editDescription.trim()}>
+            {editing ? 'Saving...' : 'Save changes'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

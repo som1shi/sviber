@@ -38,9 +38,9 @@ router.post('/', ensureAuthenticated, async (req, res) => {
       return res.status(400).json({ error: 'ideaId and direction (right|left|up) required' });
     }
 
-    const idea = await Idea.findById(ideaId);
+    const idea = await Idea.findById(ideaId).select('founder').lean();
     if (!idea) return res.status(404).json({ error: 'Idea not found' });
-    if (idea.founder.toString() === req.user._id.toString()) {
+    if (String(idea.founder) === String(req.user._id)) {
       return res.status(403).json({ error: 'Cannot swipe on your own idea' });
     }
 
@@ -101,20 +101,18 @@ router.post('/', ensureAuthenticated, async (req, res) => {
         );
 
         try {
-          const match = await Match.create({
+          const createdMatch = await Match.create({
             idea: ideaId,
             pairKey: pk,
             users: orderedUsers,
             score,
             scorePending: false,
           });
-
-          const populated = await match.populate([
-            { path: 'idea', select: 'title description tags' },
-            { path: 'users', select: 'name profilePic elo.total skills primaryRole' },
-          ]);
-
-          matchesCreated.push(populated);
+          const populatedMatch = await Match.findById(createdMatch._id)
+            .populate('idea', 'title description tags')
+            .populate('users', 'name profilePic elo.total skills primaryRole')
+            .lean();
+          matchesCreated.push(populatedMatch || createdMatch);
         } catch (createErr) {
           if (createErr.code === 11000) continue;
           throw createErr;
@@ -122,7 +120,7 @@ router.post('/', ensureAuthenticated, async (req, res) => {
       }
     }
 
-    res.json({ swipe, matches: matchesCreated });
+    res.json({ swipe, matches: matchesCreated, match: matchesCreated[0] || null });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

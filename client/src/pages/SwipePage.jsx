@@ -197,6 +197,7 @@ export default function SwipePage() {
                 tags: idea.tags || [],
                 heat: idea.eloScore || 80,
                 builderCount: idea.builderCount || 0,
+                matchScore: 0,
                 isPersisted: true,
               }));
             setIdeas(filtered.length > 0 ? filtered : DEMO_IDEAS.filter(d => !swiped.has(d.id)));
@@ -246,10 +247,11 @@ export default function SwipePage() {
       });
       if (!res.ok) return;
       const data = await res.json();
-      if (data.match?._id) {
-        const partner = data.match.users?.find(u => String(u._id) !== String(user?._id));
-        showToast(`Matched with ${partner?.displayName || 'a founder'}! Opening chat...`);
-        setTimeout(() => navigate(`/app/matches/${data.match._id}`, { state: { match: data.match } }), 1500);
+      const firstMatch = data.match || data.matches?.[0];
+      if (firstMatch?._id) {
+        const partner = firstMatch.users?.find(u => String(u._id) !== String(user?._id));
+        showToast(`Matched with ${partner?.displayName || partner?.name || 'a founder'}! Opening chat...`);
+        setTimeout(() => navigate(`/app/matches/${firstMatch._id}`, { state: { match: firstMatch } }), 1500);
       }
     } catch {}
   };

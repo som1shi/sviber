@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -10,6 +11,13 @@ import {
   Chip,
   LinearProgress,
   Divider,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Alert,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 
@@ -58,7 +66,73 @@ const avatarColors = {
 };
 
 export default function ProjectsPage() {
+  const API = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState(0);
+  const [formOpen, setFormOpen] = useState(false);
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [tags, setTags] = useState('');
+  const [projectUrl, setProjectUrl] = useState('');
+  const [imageFile, setImageFile] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState('');
+
+  async function handleSubmitProject() {
+    try {
+      setSubmitting(true);
+      setFormError('');
+
+      let imageUploadId = '';
+      let imageUrl = '';
+      if (imageFile) {
+        const fd = new FormData();
+        fd.append('file', imageFile);
+        const uploadRes = await fetch(`${API}/api/uploads?kind=idea`, {
+          method: 'POST',
+          credentials: 'include',
+          body: fd,
+        });
+        if (!uploadRes.ok) {
+          const body = await uploadRes.json().catch(() => ({}));
+          throw new Error(body.error || 'Image upload failed');
+        }
+        const upload = await uploadRes.json();
+        imageUploadId = upload._id;
+        imageUrl = `${API}${upload.url}`;
+      }
+
+      const createRes = await fetch(`${API}/api/ideas`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          title,
+          description,
+          tags,
+          projectUrl,
+          imageUpload: imageUploadId || undefined,
+          imageUrl,
+        }),
+      });
+      if (!createRes.ok) {
+        const body = await createRes.json().catch(() => ({}));
+        throw new Error(body.error || 'Could not create project post');
+      }
+
+      setFormOpen(false);
+      setTitle('');
+      setDescription('');
+      setTags('');
+      setProjectUrl('');
+      setImageFile(null);
+      navigate('/app/community');
+    } catch (err) {
+      setFormError(err.message || 'Something went wrong');
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
     <Box>
@@ -273,6 +347,7 @@ export default function ProjectsPage() {
             backgroundColor: 'transparent',
             '&:hover': { backgroundColor: '#f9fafb' },
           }}
+          onClick={() => setFormOpen(true)}
         >
           <Box
             sx={{
@@ -295,6 +370,60 @@ export default function ProjectsPage() {
           </Typography>
         </Paper>
       </Box>
+
+      <Dialog open={formOpen} onClose={() => setFormOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Upload project to community</DialogTitle>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: 1 }}>
+          {formError && <Alert severity="error">{formError}</Alert>}
+          <TextField
+            label="Project title"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            fullWidth
+          />
+          <TextField
+            label="Description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            multiline
+            minRows={4}
+            fullWidth
+          />
+          <TextField
+            label="Tags (comma separated)"
+            value={tags}
+            onChange={(e) => setTags(e.target.value)}
+            placeholder="AI, Consumer, Marketplace"
+            fullWidth
+          />
+          <TextField
+            label="Project URL (optional)"
+            value={projectUrl}
+            onChange={(e) => setProjectUrl(e.target.value)}
+            placeholder="https://..."
+            fullWidth
+          />
+          <Button variant="outlined" component="label">
+            {imageFile ? `Image: ${imageFile.name}` : 'Upload image (optional)'}
+            <input
+              hidden
+              type="file"
+              accept="image/*"
+              onChange={(e) => setImageFile(e.target.files?.[0] || null)}
+            />
+          </Button>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setFormOpen(false)} disabled={submitting}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={handleSubmitProject}
+            disabled={submitting || !title.trim() || !description.trim()}
+          >
+            {submitting ? 'Submitting...' : 'Submit to Community'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
