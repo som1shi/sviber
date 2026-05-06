@@ -7,7 +7,7 @@ router.get('/', ensureAuthenticated, async (req, res) => {
   try {
     const matches = await Match.find({ users: req.user._id })
       .populate('idea', 'title description tags')
-      .populate('users', 'name profilePic elo.total skills')
+      .populate('users', 'name profilePic elo.total skills primaryRole')
       .sort({ createdAt: -1 });
     res.json(matches);
   } catch (err) {

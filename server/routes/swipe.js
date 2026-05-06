@@ -5,20 +5,7 @@ const Idea = require('../models/Idea');
 const Match = require('../models/Match');
 const User = require('../models/User');
 const { ensureAuthenticated } = require('../middleware/auth');
-
-function computeMatchScore(userA, userB) {
-  const eloCompatibility = Math.max(0, 100 - Math.abs(userA.elo.total - userB.elo.total) / 10);
-  const skillsFit = (() => {
-    const a = new Set(userA.skills);
-    const b = new Set(userB.skills);
-    const shared = [...a].filter((s) => b.has(s)).length;
-    const total = new Set([...a, ...b]).size;
-    return total === 0 ? 50 : Math.round((1 - shared / total) * 100);
-  })();
-  const activity = Math.min(100, (userA.elo.total + userB.elo.total) / 2);
-  const total = Math.round((100 + eloCompatibility + skillsFit + activity) / 4);
-  return { ideaAlignment: 100, eloCompatibility: Math.round(eloCompatibility), skillsFit, activity: Math.round(activity), total };
-}
+const { computeMatchScore, matchPairKey } = require('../services/matchScoring');
 
 router.post('/', ensureAuthenticated, async (req, res) => {
   try {
@@ -27,17 +14,30 @@ router.post('/', ensureAuthenticated, async (req, res) => {
       return res.status(400).json({ error: 'ideaId and direction (right|left|up) required' });
     }
 
+    const now = new Date();
+    const prev = await Swipe.findOne({ user: req.user._id, idea: ideaId });
+
     const swipe = await Swipe.findOneAndUpdate(
       { user: req.user._id, idea: ideaId },
       { direction },
       { upsert: true, new: true }
     );
 
-    let match = null;
+    await User.findByIdAndUpdate(req.user._id, {
+      lastActiveAt: now,
+      lastSwipeAt: now,
+    });
+
+    if (direction === 'right' && (!prev || prev.direction !== 'right')) {
+      await Idea.findByIdAndUpdate(ideaId, { $inc: { builderCount: 1 } });
+    }
+    if (direction !== 'right' && prev && prev.direction === 'right') {
+      await Idea.findByIdAndUpdate(ideaId, { $inc: { builderCount: -1 } });
+    }
+
+    const matchesCreated = [];
 
     if (direction === 'right') {
-      await Idea.findByIdAndUpdate(ideaId, { $inc: { builderCount: 1 } });
-
       const otherSwipes = await Swipe.find({
         idea: ideaId,
         direction: 'right',
@@ -45,23 +45,43 @@ router.post('/', ensureAuthenticated, async (req, res) => {
       });
 
       const currentUser = await User.findById(req.user._id);
+      if (!currentUser) {
+        return res.status(404).json({ error: 'User not found' });
+      }
 
       for (const other of otherSwipes) {
-        const exists = await Match.findOne({ idea: ideaId, users: { $all: [req.user._id, other.user] } });
+        const pk = matchPairKey(ideaId, req.user._id, other.user);
+        const exists = await Match.findOne({ pairKey: pk });
         if (exists) continue;
 
         const otherUser = await User.findById(other.user);
-        const score = computeMatchScore(currentUser, otherUser);
+        if (!otherUser) continue;
 
-        match = await Match.create({
-          idea: ideaId,
-          users: [req.user._id, other.user],
-          score,
+        const score = computeMatchScore(currentUser, otherUser, {
+          sameIdea: true,
+          now,
         });
+
+        const orderedUsers = [req.user._id, other.user].sort((a, b) =>
+          String(a).localeCompare(String(b))
+        );
+
+        try {
+          const match = await Match.create({
+            idea: ideaId,
+            pairKey: pk,
+            users: orderedUsers,
+            score,
+          });
+          matchesCreated.push(match);
+        } catch (createErr) {
+          if (createErr.code === 11000) continue; // race: duplicate pairKey
+          throw createErr;
+        }
       }
     }
 
-    res.json({ swipe, match });
+    res.json({ swipe, matches: matchesCreated });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

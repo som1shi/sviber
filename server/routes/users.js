@@ -18,7 +18,16 @@ router.put('/:id', ensureAuthenticated, async (req, res) => {
     if (req.user._id.toString() !== req.params.id) {
       return res.status(403).json({ error: 'Forbidden' });
     }
-    const allowed = ['name', 'profilePic', 'title', 'school', 'bio', 'githubLink', 'skills'];
+    const allowed = [
+      'name',
+      'profilePic',
+      'title',
+      'school',
+      'bio',
+      'githubLink',
+      'skills',
+      'primaryRole',
+    ];
     const updates = Object.fromEntries(
       Object.entries(req.body).filter(([k]) => allowed.includes(k))
     );

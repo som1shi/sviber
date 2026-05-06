@@ -6,6 +6,8 @@ const eloHistorySchema = new mongoose.Schema({
   at: { type: Date, default: Date.now },
 }, { _id: false });
 
+const ROLE_ENUM = ['FE', 'BE', 'AI', 'DESIGN', 'GTM', 'PM'];
+
 const userSchema = new mongoose.Schema({
   googleId: { type: String, required: true, unique: true },
   email: { type: String, required: true, unique: true },
@@ -15,6 +17,12 @@ const userSchema = new mongoose.Schema({
   school: { type: String },
   bio: { type: String },
   githubLink: { type: String },
+  /** Primary builder role — drives skills-complement scoring in cofounder matching. */
+  primaryRole: { type: String, enum: ROLE_ENUM, default: 'PM' },
+  /** Client / server bumps this on swipe and other actions for “active lately”. */
+  lastActiveAt: { type: Date, default: Date.now },
+  /** Last swipe time (set server-side); preferred for matching activity signal. */
+  lastSwipeAt: { type: Date },
   skills: [{ type: String }],
   elo: {
     total: { type: Number, default: 0 },
