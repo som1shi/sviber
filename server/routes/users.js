@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
-const { recalcElo } = require('../lib/elo');
+const { recalcElo, ensureEloSchema } = require('../lib/elo');
 
 const SIGNALS = [
   { pattern: /launched|shipped|live users|active users|production/i,       points: 50, reason: 'Launched a product with real users' },
@@ -52,6 +52,7 @@ router.post('/me/resume', async (req, res) => {
 
   try {
     const { score, reasons } = scoreResume(resumeText);
+    await ensureEloSchema(req.user._id);
     await User.findByIdAndUpdate(req.user._id, { 'elo.startingBonus': score });
     const newTotal = await recalcElo(req.user._id);
     res.json({ bonus: score, reasons, newTotal });
