@@ -19,7 +19,20 @@ const io = new Server(httpServer, {
   cors: { origin: '*' },
 });
 
-app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5175', credentials: true }));
+const defaultDevOrigins = ['http://localhost:5173', 'http://localhost:5174', 'http://127.0.0.1:5173', 'http://127.0.0.1:5174'];
+const corsAllowed = process.env.CLIENT_URL
+  ? process.env.CLIENT_URL.split(',').map((s) => s.trim()).filter(Boolean)
+  : defaultDevOrigins;
+
+app.use(
+  cors({
+    origin: (origin, cb) => {
+      if (!origin || corsAllowed.includes(origin)) return cb(null, true);
+      return cb(null, false);
+    },
+    credentials: true,
+  })
+);
 app.use(express.json());
 
 app.use(session({

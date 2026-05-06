@@ -2,6 +2,8 @@ const mongoose = require('mongoose');
 
 const matchSchema = new mongoose.Schema({
   idea: { type: mongoose.Schema.Types.ObjectId, ref: 'Idea', required: true },
+  /** Stable id for idea + sorted user pair; unique to prevent duplicates. */
+  pairKey: { type: String, required: true, unique: true, index: true },
   users: {
     type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     validate: { validator: (v) => v.length === 2, message: 'Match must have exactly 2 users' },

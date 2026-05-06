@@ -1,217 +1,249 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
-  Avatar,
   Box,
-  Button,
-  Chip,
-  CircularProgress,
-  Divider,
-  Paper,
-  Stack,
   Typography,
+  Paper,
+  Avatar,
+  Button,
+  Stack,
+  CircularProgress,
+  Alert,
+  Chip,
 } from '@mui/material';
-import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutlineOutlined';
-import FavoriteIcon from '@mui/icons-material/Favorite';
-import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
+import { Favorite as FavoriteIcon } from '@mui/icons-material';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+const SIGNALS = [
+  { key: 'ideaAlignment', label: 'Same idea', weightPct: 40, color: '#3b82f6' },
+  { key: 'skillsFit', label: 'Skills fit', weightPct: 30, color: '#10b981' },
+  { key: 'eloCompatibility', label: 'Similar ELO', weightPct: 20, color: '#8b5cf6' },
+  { key: 'activity', label: 'Active lately', weightPct: 10, color: '#f59e0b' },
+];
 
-function userId(user) {
-  return user?._id || user?.id;
+function weightedPoints(raw0to100, weightPct) {
+  return Math.round((raw0to100 / 100) * weightPct);
 }
 
-function userName(user) {
-  return user?.displayName || user?.name || 'Founder';
-}
-
-function initials(name) {
-  return name
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0])
-    .join('')
-    .toUpperCase() || 'F';
-}
-
-function canStartChat(match) {
-  return Boolean(match?._id && match?.idea && match?.users?.length === 2);
-}
-
-function MatchCard({ match, currentUserId, onOpenChat }) {
-  const partner = match.users?.find((user) => userId(user) !== currentUserId) || match.users?.[0];
-  const partnerName = userName(partner);
-  const score = match.score?.total ?? 0;
-  const qualified = canStartChat(match);
-
+function SignalBars({ score }) {
   return (
-    <Paper
-      sx={{
-        p: 3,
-        border: '1px solid #e5e7eb',
-        borderRadius: 2,
-        boxShadow: 'none',
-        backgroundColor: '#fff',
-      }}
-    >
-      <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
-        <Avatar
-          src={partner?.avatar || partner?.profilePic}
-          sx={{ width: 48, height: 48, bgcolor: '#111827', fontWeight: 800 }}
-        >
-          {initials(partnerName)}
-        </Avatar>
-
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, mb: 0.5 }}>
-            <Typography sx={{ fontWeight: 800, fontSize: 18 }}>{partnerName}</Typography>
-            <Chip
-              label={`${score} match`}
-              size="small"
-              sx={{ bgcolor: '#ecfdf5', color: '#047857', fontWeight: 800, flexShrink: 0 }}
-            />
-          </Box>
-
-          <Typography sx={{ color: '#6b7280', fontSize: 14, mb: 2 }}>
-            Both founders swiped right on the same idea.
-          </Typography>
-
-          <Box sx={{ p: 2, borderRadius: 2, bgcolor: '#f9fafb', border: '1px solid #eef2f7' }}>
-            <Typography sx={{ color: '#6b7280', fontSize: 12, fontWeight: 700, mb: 0.5 }}>
-              Matched idea
+    <Box sx={{ pt: 1.5 }}>
+      {SIGNALS.map((signal) => {
+        const raw = score?.[signal.key] ?? 0;
+        const pts = weightedPoints(raw, signal.weightPct);
+        return (
+          <Box key={signal.key} sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1.25 }}>
+            <Typography variant="caption" sx={{ color: '#6b7280', width: 88, flexShrink: 0 }}>
+              {signal.label}
             </Typography>
-            <Typography sx={{ fontWeight: 800 }}>{match.idea?.title || 'Untitled idea'}</Typography>
-            {match.idea?.description && (
-              <Typography sx={{ color: '#6b7280', fontSize: 14, mt: 0.75, lineHeight: 1.5 }}>
-                {match.idea.description}
-              </Typography>
-            )}
-            {match.idea?.tags?.length > 0 && (
-              <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1, mt: 1.5 }}>
-                {match.idea.tags.map((tag) => (
-                  <Chip key={tag} label={tag} size="small" sx={{ bgcolor: '#eef2ff', color: '#3730a3' }} />
-                ))}
-              </Stack>
-            )}
-          </Box>
-
-          <Divider sx={{ my: 2 }} />
-
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2 }}>
-            <Typography sx={{ color: qualified ? '#047857' : '#6b7280', fontSize: 13, fontWeight: 700 }}>
-              {qualified ? 'Chat unlocked' : 'Waiting for a complete founder match'}
+            <Box sx={{ flex: 1, height: 8, borderRadius: 4, bgcolor: '#f3f4f6', overflow: 'hidden' }}>
+              <Box
+                sx={{
+                  width: `${raw}%`,
+                  height: '100%',
+                  borderRadius: 4,
+                  bgcolor: signal.color,
+                }}
+              />
+            </Box>
+            <Typography variant="caption" fontWeight={700} sx={{ width: 108, textAlign: 'right' }}>
+              +{pts} / {signal.weightPct}
             </Typography>
-            <Button
-              variant="contained"
-              startIcon={qualified ? <ChatBubbleOutlineIcon /> : <LockOutlinedIcon />}
-              disabled={!qualified}
-              onClick={() => onOpenChat(match)}
-              sx={{ bgcolor: '#111827', '&:hover': { bgcolor: '#374151' }, borderRadius: 2, textTransform: 'none' }}
-            >
-              Start chat
-            </Button>
           </Box>
-        </Box>
-      </Box>
-    </Paper>
+        );
+      })}
+    </Box>
   );
 }
 
 export default function MatchesPage() {
+  const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
-  const { user } = useAuth();
   const [matches, setMatches] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(null);
+
+  const myId = user?._id || user?.id;
 
   useEffect(() => {
-    let ignore = false;
-
-    async function loadMatches() {
-      try {
-        const res = await fetch(`${API}/api/matches`, { credentials: 'include' });
-        if (!res.ok) throw new Error('Unable to load matches');
-        const data = await res.json();
-        if (!ignore) setMatches(Array.isArray(data) ? data : []);
-      } catch (err) {
-        if (!ignore) setError(err.message);
-      } finally {
-        if (!ignore) setLoading(false);
-      }
+    if (authLoading) return;
+    if (!user) {
+      setLoading(false);
+      setMatches([]);
+      return;
     }
 
-    loadMatches();
-    return () => {
-      ignore = true;
-    };
-  }, []);
+    fetch('/api/matches', { credentials: 'include' })
+      .then(async (res) => {
+        if (res.status === 401) return [];
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to load matches');
+        return res.json();
+      })
+      .then(setMatches)
+      .catch((e) => setError(e.message || 'Something went wrong'))
+      .finally(() => setLoading(false));
+  }, [user, authLoading]);
 
-  const chatReadyMatches = useMemo(() => matches.filter(canStartChat), [matches]);
-  const currentUserId = userId(user);
+  const sortedMatches = useMemo(
+    () =>
+      [...matches].sort(
+        (a, b) => (b.score?.total ?? 0) - (a.score?.total ?? 0)
+      ),
+    [matches]
+  );
 
-  const openChat = (match) => {
-    navigate(`/app/matches/${match._id}`, { state: { match } });
+  const updateStatus = async (matchId, status) => {
+    try {
+      const res = await fetch(`/api/matches/${matchId}/status`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Update failed');
+      const updated = await res.json();
+      setMatches((prev) =>
+        prev.map((m) => (m._id === matchId ? { ...m, status: updated.status } : m))
+      );
+    } catch (e) {
+      setError(e.message);
+    }
   };
 
-  return (
-    <Box sx={{ maxWidth: 980, mx: 'auto', width: '100%' }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 3, alignItems: 'flex-end', mb: 4 }}>
-        <Box>
-          <Typography variant="h4" sx={{ fontWeight: 800, mb: 1 }}>
-            Matches
-          </Typography>
-          <Typography sx={{ color: '#6b7280' }}>
-            Chat opens only after two founders pick the same idea.
-          </Typography>
-        </Box>
-        <Chip
-          icon={<FavoriteIcon />}
-          label={`${chatReadyMatches.length} chat ready`}
-          sx={{ bgcolor: '#fff', border: '1px solid #e5e7eb', fontWeight: 800 }}
-        />
+  if (authLoading || loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
+        <CircularProgress size={32} sx={{ color: '#111' }} />
       </Box>
+    );
+  }
 
-      {loading && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-          <CircularProgress />
-        </Box>
+  if (!user) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
+          Matches
+        </Typography>
+        <Alert severity="info">Sign in to see people who want to build the same ideas as you.</Alert>
+      </Box>
+    );
+  }
+
+  return (
+    <Box sx={{ p: 3, maxWidth: 720, mx: 'auto', overflowY: 'auto', maxHeight: '100%' }}>
+      <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
+        Matches
+      </Typography>
+      <Typography sx={{ color: '#6b7280', mb: 3 }}>
+        Same-idea builders ranked by alignment, complementary skills, ELO similarity, and recent activity.
+      </Typography>
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
+          {error}
+        </Alert>
       )}
 
-      {!loading && error && (
-        <Paper sx={{ p: 4, borderRadius: 2, border: '1px solid #fee2e2', bgcolor: '#fef2f2', boxShadow: 'none' }}>
-          <Typography sx={{ fontWeight: 800, color: '#991b1b', mb: 1 }}>Could not load matches</Typography>
-          <Typography sx={{ color: '#7f1d1d' }}>{error}</Typography>
-        </Paper>
-      )}
-
-      {!loading && !error && matches.length === 0 && (
+      {sortedMatches.length === 0 ? (
         <Paper
           sx={{
             p: 6,
             textAlign: 'center',
             backgroundColor: '#f9fafb',
             border: '2px dashed #e5e7eb',
-            borderRadius: 2,
-            boxShadow: 'none',
+            borderRadius: 3,
           }}
         >
           <FavoriteIcon sx={{ fontSize: 48, color: '#d1d5db', mb: 2 }} />
-          <Typography variant="h6" sx={{ fontWeight: 800, mb: 1 }}>
-            No founder matches yet
+          <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
+            No matches yet
           </Typography>
-          <Typography variant="body2" sx={{ color: '#6b7280', maxWidth: 420, mx: 'auto' }}>
-            Swipe right on ideas you want to build. When another founder chooses the same idea, chat unlocks here.
+          <Typography variant="body2" sx={{ color: '#9ca3af', maxWidth: 400, mx: 'auto' }}>
+            Swipe right on ideas you want to build. When someone else swipes right on the same idea, you will
+            appear here with a computed match score.
           </Typography>
         </Paper>
-      )}
+      ) : (
+        <Stack spacing={2.5}>
+          {sortedMatches.map((match) => {
+            const partner = match.users?.find((u) => String(u._id) !== String(myId));
+            const idea = match.idea;
+            const sc = match.score || {};
 
-      {!loading && !error && matches.length > 0 && (
-        <Stack spacing={2}>
-          {matches.map((match) => (
-            <MatchCard key={match._id} match={match} currentUserId={currentUserId} onOpenChat={openChat} />
-          ))}
+            return (
+              <Paper
+                key={match._id}
+                sx={{
+                  p: 2.5,
+                  borderRadius: 3,
+                  border: '1px solid #e5e7eb',
+                  boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
+                }}
+              >
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 2 }}>
+                  <Box sx={{ display: 'flex', gap: 2, minWidth: 0 }}>
+                    <Avatar
+                      src={partner?.profilePic}
+                      alt=""
+                      sx={{ width: 48, height: 48 }}
+                    >
+                      {partner?.name?.[0]}
+                    </Avatar>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography sx={{ fontWeight: 700, fontSize: '1rem', mb: 0.25 }}>
+                        {partner?.name || 'Builder'}
+                      </Typography>
+                      <Typography variant="body2" sx={{ color: '#6b7280', mb: 0.5 }}>
+                        {idea?.title || 'Idea'}
+                      </Typography>
+                      <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                        {(partner?.skills || []).slice(0, 4).map((s) => (
+                          <Chip key={s} label={s} size="small" sx={{ height: 22, fontSize: '0.7rem' }} />
+                        ))}
+                        {partner?.primaryRole && (
+                          <Chip label={partner.primaryRole} size="small" sx={{ height: 22, fontWeight: 600 }} />
+                        )}
+                      </Stack>
+                    </Box>
+                  </Box>
+
+                  <Box sx={{ textAlign: 'right', flexShrink: 0 }}>
+                    <Typography variant="caption" sx={{ color: '#9ca3af' }}>
+                      Match
+                    </Typography>
+                    <Typography variant="h4" sx={{ fontWeight: 800, lineHeight: 1 }}>
+                      {sc.total ?? '—'}
+                    </Typography>
+                    <Chip label={match.status} size="small" sx={{ mt: 0.5, textTransform: 'capitalize' }} />
+                  </Box>
+                </Box>
+
+                <SignalBars score={sc} />
+
+                <Stack direction="row" spacing={1.25} sx={{ mt: 2 }}>
+                  <Button
+                    variant="contained"
+                    disabled={match.status !== 'pending'}
+                    onClick={() => updateStatus(match._id, 'collab')}
+                    sx={{
+                      textTransform: 'none',
+                      fontWeight: 600,
+                      bgcolor: '#111',
+                      '&:hover': { bgcolor: '#333' },
+                    }}
+                  >
+                    Collab
+                  </Button>
+                  <Button variant="outlined" disabled={match.status !== 'pending'} onClick={() => updateStatus(match._id, 'passed')} sx={{ textTransform: 'none' }}>
+                    Pass
+                  </Button>
+                  <Button variant="text" onClick={() => navigate(`/app/build/${match._id}`)} sx={{ textTransform: 'none', ml: 'auto!important' }}>
+                    Open build →
+                  </Button>
+                </Stack>
+              </Paper>
+            );
+          })}
         </Stack>
       )}
     </Box>
