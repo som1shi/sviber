@@ -13,12 +13,14 @@ import ProfilePage from './pages/ProfilePage';
 import SettingsPage from './pages/SettingsPage';
 import ChatPage from './pages/ChatPage';
 import BuildPage from './pages/BuildPage';
+import SurveyPage from './pages/SurveyPage';
 
 export default function App() {
   return (
     <Routes>
       <Route path="/" element={<PublicLayout><LandingPage /></PublicLayout>} />
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/survey" element={<SurveyPage />} />
 
       {/* TODO: wrap AppLayout in a ProtectedRoute once Google OAuth is wired up */}
       <Route path="/app" element={<AppLayout />}>

@@ -49,6 +49,7 @@ app.use('/api/matches', require('./routes/matches'));
 app.use('/api/projects', require('./routes/projects'));
 app.use('/api/swipe', require('./routes/swipe'));
 app.use('/api/build', require('./routes/build'));
+app.use('/api/survey', require('./routes/survey'));
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
