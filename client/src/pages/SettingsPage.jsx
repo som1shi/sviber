@@ -52,7 +52,7 @@ export default function SettingsPage() {
   if (loading) return <CircularProgress sx={{ m: 4 }} />;
 
   return (
-    <Box sx={{ maxWidth: 600 }}>
+    <Box sx={{ maxWidth: 480, px: 2 }}>
       <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>Settings</Typography>
       <Typography sx={{ color: '#6b7280', mb: 4 }}>Manage your founder profile.</Typography>
 
