@@ -5,9 +5,15 @@ const cors = require('cors');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
 
+const session = require('express-session');
+const MongoStore = require('connect-mongo');
+
 const app = express();
 const httpServer = createServer(app);
 const PORT = process.env.PORT || 5000;
+
+// Trust Render's proxy so secure cookies work over HTTPS
+app.set('trust proxy', 1);
 
 const io = new Server(httpServer, {
   cors: { origin: '*' },
@@ -15,9 +21,6 @@ const io = new Server(httpServer, {
 
 app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5175', credentials: true }));
 app.use(express.json());
-
-const session = require('express-session');
-const MongoStore = require('connect-mongo');
 
 app.use(session({
   secret: process.env.SESSION_SECRET || 'dev-secret',
