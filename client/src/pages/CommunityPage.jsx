@@ -225,7 +225,7 @@ export default function CommunityPage() {
     : [...ideas].sort((a, b) => b.heat - a.heat);
 
   return (
-    <Box>
+    <Box sx={{ maxWidth: 980, mx: 'auto', width: '100%' }}>
       <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 3 }}>
         <Box>
           <Typography variant="h4" sx={{ fontWeight: 700, mb: 0.5 }}>
@@ -251,7 +251,7 @@ export default function CommunityPage() {
         </Button>
       </Box>
 
-      <Box sx={{ display: 'flex', gap: 4, mb: 3 }}>
+      <Box sx={{ display: 'flex', gap: 5, mb: 3 }}>
         {[
           { label: 'total upvotes', value: totalUpvotes },
           { label: 'want to build', value: wantToBuild },
@@ -271,13 +271,13 @@ export default function CommunityPage() {
           mb: 3,
           '& .MuiTab-root': { textTransform: 'none', fontWeight: 600, fontSize: 13, minWidth: 80 },
           '& .MuiTabs-indicator': { bgcolor: '#111' },
-          '& .Mui-selected': { color: '#111' },
+          '& .Mui-selected': { color: '#111 !important' },
         }}
       >
         {TABS.map(t => <Tab key={t} label={t} />)}
       </Tabs>
 
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.25, pb: 2 }}>
         {filteredIdeas.length === 0 ? (
           <Typography sx={{ color: '#9ca3af', textAlign: 'center', py: 6 }}>
             Nothing here yet.

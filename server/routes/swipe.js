@@ -16,7 +16,6 @@ router.post('/', ensureAuthenticated, async (req, res) => {
 
     const now = new Date();
     const prev = await Swipe.findOne({ user: req.user._id, idea: ideaId });
-
     const swipe = await Swipe.findOneAndUpdate(
       { user: req.user._id, idea: ideaId },
       { direction },
@@ -38,6 +37,8 @@ router.post('/', ensureAuthenticated, async (req, res) => {
     const matchesCreated = [];
 
     if (direction === 'right') {
+      const idea = await Idea.findById(ideaId);
+      if (!idea) return res.status(404).json({ error: 'Idea not found' });
       const otherSwipes = await Swipe.find({
         idea: ideaId,
         direction: 'right',

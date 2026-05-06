@@ -28,6 +28,7 @@ export default function App() {
         <Route path="swipe"          element={<SwipePage />} />
         <Route path="matches"        element={<MatchesPage />} />
         <Route path="chat"           element={<ChatPage />} />
+        <Route path="matches/:matchId" element={<ChatPage />} />
         <Route path="community"      element={<CommunityPage />} />
         <Route path="projects"       element={<ProjectsPage />} />
         <Route path="profile"        element={<ProfilePage />} />

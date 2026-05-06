@@ -126,7 +126,9 @@ export default function SurveyPage() {
           credentials: 'include',
           body: JSON.stringify(answers),
         });
-      } catch (_) {}
+      } catch {
+        // Keep moving locally even if the survey save fails.
+      }
       setSaving(false);
       navigate('/app/swipe');
     } else {

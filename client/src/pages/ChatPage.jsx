@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import socket from '../socket';
 import {
  Box,
@@ -7,73 +8,16 @@ import {
  TextField,
  IconButton,
  InputAdornment,
+ Button,
+ CircularProgress,
 } from '@mui/material';
 import { ArrowUpward as SendIcon } from '@mui/icons-material';
+import { useAuth } from '../context/AuthContext';
 
 
 // ─── colour helpers ────────────────────────────────────────────────────────────
 const PURPLE = '#7C5CFC';
 const GREEN = '#00E5A0';
-
-
-// ─── static seed data ─────────────────────────────────────────────────────────
-const SEED_MESSAGES = [
- {
-   id: 1,
-   type: 'system-issue',
-   content: 'Missing fallback when pyannote model fails - wrap in try/catch and degrade gracefully',
-   issueNumber: 2,
-   dateDivider: null,
- },
- {
-   id: 2,
-   type: 'divider',
-   label: 'today',
- },
- {
-   id: 3,
-   type: 'user',
-   sender: 'DD',
-   senderColor: GREEN,
-   senderInitials: 'DD',
-   time: '9:41 AM',
-   alignRight: true,
-   content: 'hey @sarvagya -- i pushed the linear integration. @AI can you summarize whats\'s left before we can demo?',
-   highlights: ['@sarvagya', '@AI'],
- },
- {
-   id: 4,
-   type: 'ai',
-   time: '9:41 AM',
-   summary: {
-     title: 'PROJECT SUMMARY',
-     subtitle: '3 things blocking the demo:',
-     items: [
-       { text: 'Speaker diarization (SVB-007) - assigned to sarvagya, in progress' },
-       { text: 'Action item extraction accuracy < 80% on edge cases - no owner' },
-       { text: 'Auth flow for Linear OAuth - needs design approval' },
-     ],
-   },
- },
- {
-   id: 5,
-   type: 'elo-event',
-   text: 'Linear integration merged  - ELO event triggered',
-   delta: '+4 ELO',
- },
- {
-   id: 6,
-   type: 'user',
-   sender: 'sarvagya s.',
-   senderColor: '#F5A623',
-   senderInitials: 'SS',
-   time: '10:03 AM',
-   alignRight: false,
-   content: 'sorry was locked in -- diarization is now working actually. pushing in 20 mins. can we call then?',
-   highlights: [],
- },
-];
-
 
 // ─── sub-components ───────────────────────────────────────────────────────────
 
@@ -413,7 +357,7 @@ function AiMessage({ msg }) {
 // ─── top bar ──────────────────────────────────────────────────────────────────
 
 
-function TopBar({ channel, eloScore }) {
+function TopBar({ channel, eloScore, users = [] }) {
  return (
    <Box
      sx={{
@@ -455,31 +399,22 @@ function TopBar({ channel, eloScore }) {
        </Typography>
 
 
-       {/* User avatars */}
-       <Avatar
-         sx={{
-           width: 30,
-           height: 30,
-           backgroundColor: '#F5A623',
-           fontSize: '0.68rem',
-           fontWeight: 700,
-           color: '#1a1a1a',
-         }}
-       >
-         SS
-       </Avatar>
-       <Avatar
-         sx={{
-           width: 30,
-           height: 30,
-           backgroundColor: GREEN,
-           fontSize: '0.68rem',
-           fontWeight: 700,
-           color: '#1a1a1a',
-         }}
-       >
-         DD
-       </Avatar>
+       {users.map((user, index) => (
+         <Avatar
+           key={user.id || user._id || index}
+           src={user.avatar || user.profilePic}
+           sx={{
+             width: 30,
+             height: 30,
+             backgroundColor: index === 0 ? '#F5A623' : GREEN,
+             fontSize: '0.68rem',
+             fontWeight: 700,
+             color: '#1a1a1a',
+           }}
+         >
+           {user.initials}
+         </Avatar>
+       ))}
      </Box>
    </Box>
  );
@@ -582,21 +517,84 @@ function MessageInput({ channel, onSend }) {
 
 // ─── main page ────────────────────────────────────────────────────────────────
 
-// Hardcoded for now — swap in real matchId + user once auth is wired up
-const MATCH_ID = 'demo-match-001';
-const ME = { id: 'user-dd', initials: 'DD', color: GREEN };
+const API = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+
+function getUserId(user) {
+  return user?._id || user?.id;
+}
+
+function getUserName(user) {
+  return user?.displayName || user?.name || 'Founder';
+}
+
+function getInitials(name) {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase() || 'F';
+}
+
+function canStartChat(match) {
+  return Boolean(match?._id && match?.idea && match?.users?.length === 2);
+}
 
 export default function ChatPage() {
+  const { matchId } = useParams();
+  const navigate = useNavigate();
+  const { state } = useLocation();
+  const { user } = useAuth();
+  const [match, setMatch] = useState(state?.match || null);
   const [messages, setMessages] = useState([]);
+  const [loadingMatch, setLoadingMatch] = useState(!state?.match);
+  const [chatError, setChatError] = useState('');
   const bottomRef = useRef(null);
+
+  const me = {
+    id: getUserId(user) || 'local-founder',
+    initials: getInitials(getUserName(user)),
+    color: GREEN,
+  };
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  useEffect(() => {
+    if (state?.match || !matchId) return;
+
+    let ignore = false;
+    async function loadMatch() {
+      try {
+        const res = await fetch(`${API}/api/matches/${matchId}`, { credentials: 'include' });
+        if (!res.ok) throw new Error('This chat is not available yet.');
+        const data = await res.json();
+        if (!ignore) setMatch(data);
+      } catch (err) {
+        if (!ignore) setChatError(err.message);
+      } finally {
+        if (!ignore) setLoadingMatch(false);
+      }
+    }
+
+    loadMatch();
+    return () => {
+      ignore = true;
+    };
+  }, [matchId, state?.match]);
+
   // Join the match room and load history
   useEffect(() => {
-    socket.emit('join-room', MATCH_ID, ({ history }) => {
+    if (!canStartChat(match)) return;
+
+    socket.emit('join-room', match._id, ({ history = [], error }) => {
+      if (error) {
+        setChatError(error);
+        return;
+      }
+
       const loaded = history.map((m) => ({
         id: m._id,
         type: 'user',
@@ -604,7 +602,7 @@ export default function ChatPage() {
         senderColor: m.senderColor,
         senderInitials: m.senderInitials,
         time: new Date(m.time || m.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-        alignRight: m.senderId === ME.id,
+        alignRight: m.senderId === me.id,
         content: m.content,
         highlights: [],
       }));
@@ -631,9 +629,11 @@ export default function ChatPage() {
 
     socket.on('chat-message', handleIncoming);
     return () => socket.off('chat-message', handleIncoming);
-  }, []);
+  }, [match, me.id]);
 
   const handleSend = useCallback((text) => {
+    if (!canStartChat(match)) return;
+
     // Add to UI immediately so the sender doesn't wait for the server
     setMessages((prev) => [
       ...prev,
@@ -641,8 +641,8 @@ export default function ChatPage() {
         id: Date.now(),
         type: 'user',
         sender: 'you',
-        senderColor: ME.color,
-        senderInitials: ME.initials,
+        senderColor: me.color,
+        senderInitials: me.initials,
         time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
         alignRight: true,
         content: text,
@@ -651,17 +651,50 @@ export default function ChatPage() {
     ]);
 
     socket.emit('send-message', {
-      matchId: MATCH_ID,
-      senderId: ME.id,
-      senderInitials: ME.initials,
-      senderColor: ME.color,
+      matchId: match._id,
+      senderId: me.id,
+      senderInitials: me.initials,
+      senderColor: me.color,
       content: text,
     });
-  }, []);
+  }, [match, me.color, me.id, me.initials]);
+
+  if (loadingMatch) {
+    return (
+      <Box sx={{ display: 'grid', placeItems: 'center', height: '100%', backgroundColor: '#F2F2F2' }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (chatError || !canStartChat(match)) {
+    return (
+      <Box sx={{ display: 'grid', placeItems: 'center', height: '100%', backgroundColor: '#F2F2F2', p: 4 }}>
+        <Box sx={{ textAlign: 'center', maxWidth: 420 }}>
+          <Typography variant="h5" sx={{ fontWeight: 800, mb: 1 }}>
+            Chat is locked
+          </Typography>
+          <Typography sx={{ color: '#6b7280', mb: 3 }}>
+            {chatError || 'Chat only starts after two founders match on the same idea.'}
+          </Typography>
+          <Button variant="contained" onClick={() => navigate('/app/matches')} sx={{ bgcolor: '#111827', textTransform: 'none' }}>
+            Back to matches
+          </Button>
+        </Box>
+      </Box>
+    );
+  }
+
+  const channel = match.idea?.title || `match-${match._id.slice(-4)}`;
+  const topBarUsers = match.users.map((matchUser) => ({
+    ...matchUser,
+    id: getUserId(matchUser),
+    initials: getInitials(getUserName(matchUser)),
+  }));
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: '#F2F2F2' }}>
-      <TopBar channel="match-001" eloScore={88} />
+      <TopBar channel={channel} eloScore={match.score?.total ?? 0} users={topBarUsers} />
 
       <Box sx={{ flex: 1, overflowY: 'auto', py: 2 }}>
         {messages.map((msg) => {
@@ -675,8 +708,7 @@ export default function ChatPage() {
         <div ref={bottomRef} />
       </Box>
 
-      <MessageInput channel="match-001" onSend={handleSend} />
+      <MessageInput channel={channel} onSend={handleSend} />
     </Box>
   );
 }
-

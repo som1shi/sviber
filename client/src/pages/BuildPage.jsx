@@ -211,7 +211,6 @@ export default function BuildPage() {
   const [phase, setPhase]               = useState('intro');
   const [isTyping, setIsTyping]         = useState(false);
   const [generatedHtml, setGeneratedHtml] = useState(null);
-  const [appCode, setAppCode]             = useState(null);
   const [buildProgress, setBuildProgress] = useState(0);
   const [q1Answer, setQ1Answer]         = useState('');
   const [repoUrl, setRepoUrl]           = useState(null);
@@ -310,7 +309,6 @@ export default function BuildPage() {
         setPhase('publishing');
         setTimeout(() => {
           setGeneratedHtml(html);
-          setAppCode(generatedCode);
           addAiMsg("App generated. Creating your GitHub repo now...");
         }, 600);
 

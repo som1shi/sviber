@@ -97,6 +97,12 @@ const Match = require('./models/Match');
 
 io.on('connection', (socket) => {
   socket.on('join-room', async (matchId, callback) => {
+    const match = await Match.findById(matchId).select('_id').lean().catch(() => null);
+    if (!match) {
+      if (callback) callback({ status: 'locked', error: 'Chat only starts after a founder match exists.' });
+      return;
+    }
+
     await socket.join(matchId);
 
     let history = [];
@@ -112,30 +118,33 @@ io.on('connection', (socket) => {
     if (callback) callback({ status: 'ok', history });
   });
 
-  socket.on(
-    'send-message',
-    async ({ matchId, senderId, senderInitials, senderColor, content }, callback) => {
-      const now = new Date();
-
-      try {
-        await Message.create({ matchId, senderId, senderInitials, senderColor, content });
-        await Match.findByIdAndUpdate(matchId, { lastMessageAt: new Date() }).catch(() => {});
-      } catch (_) {
-        /* ignore */
-      }
-
-      socket.to(matchId).emit('chat-message', {
-        id: Date.now(),
-        senderId,
-        senderInitials,
-        senderColor,
-        content,
-        time: now,
-      });
-
-      if (callback) callback({ status: 'ok' });
+  socket.on('send-message', async ({ matchId, senderId, senderInitials, senderColor, content }, callback) => {
+    const match = await Match.findById(matchId).select('_id').lean().catch(() => null);
+    if (!match) {
+      if (callback) callback({ status: 'locked', error: 'Chat only starts after a founder match exists.' });
+      return;
     }
-  );
+
+    const now = new Date();
+
+    try {
+      await Message.create({ matchId, senderId, senderInitials, senderColor, content });
+      await Match.findByIdAndUpdate(matchId, { lastMessageAt: new Date() }).catch(() => {});
+    } catch (_) {
+      /* ignore */
+    }
+
+    socket.to(matchId).emit('chat-message', {
+      id: Date.now(),
+      senderId,
+      senderInitials,
+      senderColor,
+      content,
+      time: now,
+    });
+
+    if (callback) callback({ status: 'ok' });
+  });
 
   socket.on('disconnect', () => {});
 });

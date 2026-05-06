@@ -7,9 +7,22 @@ router.get('/', ensureAuthenticated, async (req, res) => {
   try {
     const matches = await Match.find({ users: req.user._id })
       .populate('idea', 'title description tags')
-      .populate('users', 'name profilePic elo.total skills primaryRole')
+      .populate('users', 'displayName name avatar profilePic role primaryRole elo skills')
       .sort({ createdAt: -1 });
     res.json(matches);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/:id', ensureAuthenticated, async (req, res) => {
+  try {
+    const match = await Match.findOne({ _id: req.params.id, users: req.user._id })
+      .populate('idea', 'title description tags')
+      .populate('users', 'displayName name avatar profilePic role primaryRole elo skills');
+
+    if (!match) return res.status(404).json({ error: 'Match not found' });
+    res.json(match);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
