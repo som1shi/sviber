@@ -48,15 +48,13 @@ app.use('/api/ideas', require('./routes/ideas'));
 app.use('/api/matches', require('./routes/matches'));
 app.use('/api/projects', require('./routes/projects'));
 app.use('/api/swipe', require('./routes/swipe'));
+app.use('/api/build', require('./routes/build'));
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
 // ─── Socket.IO ────────────────────────────────────────────────────────────────
-// Each match gets its own room keyed by matchId.
-// Events: join-room, send-message → broadcasts chat-message to the room.
-
 const { Message } = require('./models/Message');
 
 io.on('connection', (socket) => {
@@ -81,12 +79,10 @@ io.on('connection', (socket) => {
     console.log(`message from ${socket.id} in room ${matchId}:`, content);
     const now = new Date();
 
-    // Try to persist — but broadcast regardless so the UI works without MongoDB
     try {
       await Message.create({ matchId, senderId, senderInitials, senderColor, content });
     } catch (_) {}
 
-    // socket.to() broadcasts to everyone in the room EXCEPT the sender
     socket.to(matchId).emit('chat-message', {
       id: Date.now(),
       senderId,

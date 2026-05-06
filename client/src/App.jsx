@@ -12,6 +12,7 @@ import ProjectsPage from './pages/ProjectsPage';
 import ProfilePage from './pages/ProfilePage';
 import SettingsPage from './pages/SettingsPage';
 import ChatPage from './pages/ChatPage';
+import BuildPage from './pages/BuildPage';
 
 export default function App() {
   return (
@@ -22,12 +23,13 @@ export default function App() {
       {/* TODO: wrap AppLayout in a ProtectedRoute once Google OAuth is wired up */}
       <Route path="/app" element={<AppLayout />}>
         <Route index element={<Navigate to="/app/swipe" replace />} />
-        <Route path="swipe"     element={<SwipePage />} />
-        <Route path="matches"   element={<ChatPage />} />
-        <Route path="community" element={<CommunityPage />} />
-        <Route path="projects"  element={<ProjectsPage />} />
-        <Route path="profile"   element={<ProfilePage />} />
-        <Route path="settings"  element={<SettingsPage />} />
+        <Route path="swipe"          element={<SwipePage />} />
+        <Route path="matches"        element={<ChatPage />} />
+        <Route path="community"      element={<CommunityPage />} />
+        <Route path="projects"       element={<ProjectsPage />} />
+        <Route path="profile"        element={<ProfilePage />} />
+        <Route path="settings"       element={<SettingsPage />} />
+        <Route path="build/:matchId" element={<BuildPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />
