@@ -42,13 +42,17 @@ function computeQuality(stats) {
 }
 
 function computeActivity(stats) {
-  // Swiping doesn't affect elo — what matters is turning matches into launched projects
+  // Build rate: turning collab matches into launched projects (most important)
   const buildRate = stats.matchesCollab > 0
     ? Math.min(100, Math.round((stats.projectsLaunched / stats.matchesCollab) * 100))
     : 50;
-  // Small bonus for being engaged (having collab matches at all)
-  const engagement = Math.min(100, stats.matchesCollab * 10);
-  return Math.round(buildRate * 0.8 + engagement * 0.2);
+  // Swipe engagement: only kicks in after 20 swipes so early use doesn't swing it.
+  // Penalizes denying everything, rewards genuine engagement — but capped 30-70 so
+  // it can never dominate the score.
+  const swipeEngagement = stats.totalSwipes >= 20
+    ? Math.min(70, Math.max(30, Math.round((stats.rightSwipes / stats.totalSwipes) * 100)))
+    : 50;
+  return Math.round(buildRate * 0.75 + swipeEngagement * 0.25);
 }
 
 function computeDecay(lastActive) {
