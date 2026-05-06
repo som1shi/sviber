@@ -77,7 +77,7 @@ export default function EloBreakdown({ elo, stats, history }) {
           ELO History
         </Typography>
 
-        {/* Simple Line Chart using SVG */}
+        {/* Flat line when no ELO history */}
         <svg
           width="100%"
           height="120"
@@ -85,13 +85,13 @@ export default function EloBreakdown({ elo, stats, history }) {
           viewBox="0 0 300 120"
         >
           <polyline
-            points="0,30 50,40 100,50 150,70 200,90 250,110"
+            points="0,60 300,60"
             fill="none"
-            stroke="#dc2626"
+            stroke="#10b981"
             strokeWidth="2"
           />
-          <circle cx="0" cy="30" r="3" fill="#dc2626" />
-          <circle cx="250" cy="110" r="3" fill="#dc2626" />
+          <circle cx="0" cy="60" r="3" fill="#10b981" />
+          <circle cx="300" cy="60" r="3" fill="#10b981" />
         </svg>
       </Box>
     </Paper>

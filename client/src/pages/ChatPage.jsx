@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import socket from '../socket';
 import {
  Box,
  Typography,
@@ -581,61 +582,101 @@ function MessageInput({ channel, onSend }) {
 
 // ─── main page ────────────────────────────────────────────────────────────────
 
+// Hardcoded for now — swap in real matchId + user once auth is wired up
+const MATCH_ID = 'demo-match-001';
+const ME = { id: 'user-dd', initials: 'DD', color: GREEN };
 
 export default function ChatPage() {
- const [messages, setMessages] = useState(SEED_MESSAGES);
- const bottomRef = useRef(null);
+  const [messages, setMessages] = useState([]);
+  const bottomRef = useRef(null);
 
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
- useEffect(() => {
-   bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
- }, [messages]);
+  // Join the match room and load history
+  useEffect(() => {
+    socket.emit('join-room', MATCH_ID, ({ history }) => {
+      const loaded = history.map((m) => ({
+        id: m._id,
+        type: 'user',
+        sender: m.senderInitials,
+        senderColor: m.senderColor,
+        senderInitials: m.senderInitials,
+        time: new Date(m.time || m.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+        alignRight: m.senderId === ME.id,
+        content: m.content,
+        highlights: [],
+      }));
+      setMessages(loaded);
+    });
 
+    // Listen for incoming messages
+    const handleIncoming = (msg) => {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: msg.id,
+          type: 'user',
+          sender: msg.senderInitials,
+          senderColor: msg.senderColor,
+          senderInitials: msg.senderInitials,
+          time: new Date(msg.time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+          alignRight: false,
+          content: msg.content,
+          highlights: [],
+        },
+      ]);
+    };
 
- const handleSend = (text) => {
-   const newMsg = {
-     id: Date.now(),
-     type: 'user',
-     sender: 'you',
-     senderColor: GREEN,
-     senderInitials: 'DD',
-     time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-     alignRight: true,
-     content: text,
-     highlights: [],
-   };
-   setMessages((prev) => [...prev, newMsg]);
- };
+    socket.on('chat-message', handleIncoming);
+    return () => socket.off('chat-message', handleIncoming);
+  }, []);
 
+  const handleSend = useCallback((text) => {
+    // Add to UI immediately so the sender doesn't wait for the server
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: Date.now(),
+        type: 'user',
+        sender: 'you',
+        senderColor: ME.color,
+        senderInitials: ME.initials,
+        time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+        alignRight: true,
+        content: text,
+        highlights: [],
+      },
+    ]);
 
- return (
-   <Box
-     sx={{
-       display: 'flex',
-       flexDirection: 'column',
-       height: '100%',
-       backgroundColor: '#F2F2F2',
-     }}
-   >
-     <TopBar channel="general" eloScore={88} />
+    socket.emit('send-message', {
+      matchId: MATCH_ID,
+      senderId: ME.id,
+      senderInitials: ME.initials,
+      senderColor: ME.color,
+      content: text,
+    });
+  }, []);
 
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: '#F2F2F2' }}>
+      <TopBar channel="match-001" eloScore={88} />
 
-     {/* Messages scroll area */}
-     <Box sx={{ flex: 1, overflowY: 'auto', py: 2 }}>
-       {messages.map((msg) => {
-         if (msg.type === 'divider') return <DateDivider key={msg.id} label={msg.label} />;
-         if (msg.type === 'system-issue') return <SystemIssue key={msg.id} issueNumber={msg.issueNumber} content={msg.content} />;
-         if (msg.type === 'elo-event') return <EloEvent key={msg.id} text={msg.text} delta={msg.delta} />;
-         if (msg.type === 'ai') return <AiMessage key={msg.id} msg={msg} />;
-         if (msg.type === 'user') return <UserMessage key={msg.id} msg={msg} />;
-         return null;
-       })}
-       <div ref={bottomRef} />
-     </Box>
+      <Box sx={{ flex: 1, overflowY: 'auto', py: 2 }}>
+        {messages.map((msg) => {
+          if (msg.type === 'divider') return <DateDivider key={msg.id} label={msg.label} />;
+          if (msg.type === 'system-issue') return <SystemIssue key={msg.id} issueNumber={msg.issueNumber} content={msg.content} />;
+          if (msg.type === 'elo-event') return <EloEvent key={msg.id} text={msg.text} delta={msg.delta} />;
+          if (msg.type === 'ai') return <AiMessage key={msg.id} msg={msg} />;
+          if (msg.type === 'user') return <UserMessage key={msg.id} msg={msg} />;
+          return null;
+        })}
+        <div ref={bottomRef} />
+      </Box>
 
-
-     <MessageInput channel="general" onSend={handleSend} />
-   </Box>
- );
+      <MessageInput channel="match-001" onSend={handleSend} />
+    </Box>
+  );
 }
 
