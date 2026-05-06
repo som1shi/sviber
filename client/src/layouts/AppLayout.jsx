@@ -18,6 +18,7 @@ export default function AppLayout() {
           display: 'flex',
           flexDirection: 'column',
           overflow: isChat ? 'hidden' : 'auto',
+          overflowY: isChat ? 'hidden' : 'scroll',
           height: '100vh',
           p: isChat ? 0 : 4,
         }}

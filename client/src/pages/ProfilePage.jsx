@@ -35,10 +35,10 @@ export default function ProfilePage() {
   // Empty until real projects are wired up
   const projects = [];
 
-  // ELO bars — all 0 until real data comes in
+  // ELO bars — all green at 0 until real data comes in
   const eloStats = [
-    { label: 'Responsiveness', value: 0, color: '#ef4444' },
-    { label: 'Ship Speed',     value: 0, color: '#f59e0b' },
+    { label: 'Responsiveness', value: 0, color: '#10b981' },
+    { label: 'Ship Speed',     value: 0, color: '#10b981' },
     { label: 'Collaboration',  value: 0, color: '#10b981' },
   ];
 
