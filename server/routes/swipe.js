@@ -51,7 +51,7 @@ router.post('/', ensureAuthenticated, async (req, res) => {
       { upsert: true, new: true }
     );
 
-    onSwipe(req.user._id, direction === 'right').catch(() => {});
+    onSwipe(req.user._id, direction === 'right').catch((err) => console.error('[elo] onSwipe error:', err.message));
 
     let match = null;
 

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
-const { recalcElo, ensureEloSchema } = require('../lib/elo');
+const { recalcElo, ensureEloSchema, onSwipe } = require('../lib/elo');
 
 const SIGNALS = [
   { pattern: /launched|shipped|live users|active users|production/i,       points: 50, reason: 'Launched a product with real users' },
@@ -40,6 +40,19 @@ router.put('/me', async (req, res) => {
     { new: true }
   );
   res.json(updated);
+});
+
+// POST /api/users/me/elo/recalc — force migrate + recalc elo (for testing)
+router.post('/me/elo/recalc', async (req, res) => {
+  if (!req.isAuthenticated()) return res.status(401).json({ error: 'Not logged in' });
+  try {
+    await ensureEloSchema(req.user._id);
+    const total = await recalcElo(req.user._id);
+    const user = await User.findById(req.user._id).lean();
+    res.json({ total, elo: user.elo });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // POST /api/users/me/resume — keyword-score resume text and set starting elo bonus
