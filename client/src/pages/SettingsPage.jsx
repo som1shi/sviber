@@ -67,7 +67,7 @@ export default function SettingsPage() {
       <Typography sx={{ color: '#6b7280', mb: 4 }}>Manage your founder profile.</Typography>
 
       {/* Co-founder survey action item */}
-      {surveyDone === false && (
+      {surveyDone !== true && (
         <Box
           sx={{
             display: 'flex',
