@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Idea = require('../models/Idea');
 const IdeaVote = require('../models/IdeaVote');
+const Swipe = require('../models/Swipe');
 const { ensureAuthenticated } = require('../middleware/auth');
 
 router.get('/', async (req, res) => {
@@ -15,11 +16,17 @@ router.get('/', async (req, res) => {
 
     const filter = tab === 'building' ? { status: 'building' } : {};
 
+    // Exclude ideas the user already swiped on
+    if (req.user?._id) {
+      const swiped = await Swipe.find({ user: req.user._id }).distinct('idea');
+      if (swiped.length) filter._id = { $nin: swiped };
+    }
+
     const ideas = await Idea.find(filter)
       .sort(sort)
       .skip(skip)
       .limit(Number(limit))
-      .populate('founder', 'name profilePic elo.total');
+      .populate('founder', 'displayName avatar elo');
 
     res.json(ideas);
   } catch (err) {

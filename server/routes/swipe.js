@@ -4,6 +4,7 @@ const Swipe = require('../models/Swipe');
 const Idea = require('../models/Idea');
 const Match = require('../models/Match');
 const User = require('../models/User');
+const Survey = require('../models/Survey');
 const { ensureAuthenticated } = require('../middleware/auth');
 const { computeMatchScore, matchPairKey } = require('../services/matchScoring');
 
