@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Box, Typography, TextField, Button, Avatar, Divider, CircularProgress } from '@mui/material';
 import { useAuth } from '../context/AuthContext';
 
@@ -6,11 +7,20 @@ const API = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 export default function SettingsPage() {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  const [surveyDone, setSurveyDone] = useState(null);
   const [form, setForm] = useState({ displayName: '', role: '', school: '', bio: '', github: '' });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    fetch(`${API}/api/survey`, { credentials: 'include' })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => setSurveyDone(!!data))
+      .catch(() => setSurveyDone(false));
+  }, []);
 
   useEffect(() => {
     fetch(`${API}/api/users/me`, { credentials: 'include' })
@@ -55,6 +65,47 @@ export default function SettingsPage() {
     <Box sx={{ maxWidth: 480, px: 2 }}>
       <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>Settings</Typography>
       <Typography sx={{ color: '#6b7280', mb: 4 }}>Manage your founder profile.</Typography>
+
+      {/* Co-founder survey action item */}
+      {surveyDone !== true && (
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            p: 2,
+            mb: 4,
+            borderRadius: 2,
+            backgroundColor: '#f5f3ff',
+            border: '1px solid #ddd6fe',
+          }}
+        >
+          <Box>
+            <Typography sx={{ fontWeight: 600, fontSize: '0.9rem', color: '#5b21b6' }}>
+              Action item: Fill out your co-founder survey
+            </Typography>
+            <Typography sx={{ fontSize: '0.8rem', color: '#7c3aed', mt: 0.25 }}>
+              10 questions to help us match you with the right co-founder.
+            </Typography>
+          </Box>
+          <Button
+            variant="contained"
+            size="small"
+            onClick={() => navigate('/survey')}
+            sx={{
+              backgroundColor: '#7C5CFC',
+              borderRadius: 2,
+              textTransform: 'none',
+              fontWeight: 600,
+              whiteSpace: 'nowrap',
+              ml: 2,
+              '&:hover': { backgroundColor: '#6a4de0' },
+            }}
+          >
+            Start →
+          </Button>
+        </Box>
+      )}
 
       {/* Avatar */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 4 }}>
