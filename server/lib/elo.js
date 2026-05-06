@@ -42,13 +42,13 @@ function computeQuality(stats) {
 }
 
 function computeActivity(stats) {
-  const selectivity = stats.totalSwipes > 0
-    ? Math.round((1 - stats.rightSwipes / stats.totalSwipes) * 100)
-    : 50;
+  // Swiping doesn't affect elo — what matters is turning matches into launched projects
   const buildRate = stats.matchesCollab > 0
     ? Math.min(100, Math.round((stats.projectsLaunched / stats.matchesCollab) * 100))
     : 50;
-  return Math.round((selectivity + buildRate) / 2);
+  // Small bonus for being engaged (having collab matches at all)
+  const engagement = Math.min(100, stats.matchesCollab * 10);
+  return Math.round(buildRate * 0.8 + engagement * 0.2);
 }
 
 function computeDecay(lastActive) {
@@ -58,10 +58,11 @@ function computeDecay(lastActive) {
 }
 
 function computeTotal(breakdown, startingBonus, lastActive) {
+  // Reliability weighted highest — actually finishing things matters most
   const bucketAdj =
-    (breakdown.reliability - 50) * 0.35 +
+    (breakdown.reliability - 50) * 0.45 +
     (breakdown.quality     - 50) * 0.35 +
-    (breakdown.activity    - 50) * 0.30;
+    (breakdown.activity    - 50) * 0.20;
   const decay = computeDecay(lastActive);
   return Math.max(0, Math.round(BASE + startingBonus + bucketAdj - decay));
 }
