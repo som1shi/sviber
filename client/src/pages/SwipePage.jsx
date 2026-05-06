@@ -26,6 +26,15 @@ const DEMO_IDEAS = [
   { id: 'd1', title: 'AI meeting notes that actually ship actions', pitch: 'Listens to standups, auto-creates tasks in Linear, and pings ghosting teammates.', tags: ['AI', 'B2B'], heat: 94, builderCount: 12, isPersisted: false },
   { id: 'd2', title: 'Stripe for creator payouts', pitch: 'One API to split revenue between creators, platforms, and collaborators. No spreadsheet hell.', tags: ['Fintech', 'API'], heat: 87, builderCount: 8, isPersisted: false },
   { id: 'd3', title: 'Cursor but for design', pitch: 'AI pair designer in Figma. Suggests components, catches inconsistencies, writes design tokens.', tags: ['Design', 'AI'], heat: 91, builderCount: 5, isPersisted: false },
+  { id: 'd4', title: 'YC application co-pilot', pitch: 'Trained on every funded YC application. Tells you exactly what to fix before you submit.', tags: ['AI', 'Founders'], heat: 96, builderCount: 21, isPersisted: false },
+  { id: 'd5', title: 'Ramp for college students', pitch: 'Corporate card and spend tracking built for student orgs and hackathon clubs. Auto-reconciles reimbursements.', tags: ['Fintech', 'EdTech'], heat: 78, builderCount: 6, isPersisted: false },
+  { id: 'd6', title: 'Background check for freelancers', pitch: 'Instant trust score for contractors — GitHub activity, past client reviews, on-time delivery rate. Like a credit score but for builders.', tags: ['B2B', 'Marketplace'], heat: 82, builderCount: 9, isPersisted: false },
+  { id: 'd7', title: 'Vercel for mobile apps', pitch: 'Push to deploy React Native. Preview links for every PR. No Xcode, no TestFlight drama.', tags: ['DevTools', 'Mobile'], heat: 89, builderCount: 14, isPersisted: false },
+  { id: 'd8', title: 'OpenTable but for study rooms', pitch: 'Book library pods, café corners, and campus quiet zones in one app. Waitlist notifications when a spot opens.', tags: ['EdTech', 'Consumer'], heat: 71, builderCount: 3, isPersisted: false },
+  { id: 'd9', title: 'Duolingo for system design', pitch: 'Daily bite-sized system design challenges with spaced repetition. Built for new grads prepping for FAANG.', tags: ['EdTech', 'AI'], heat: 85, builderCount: 17, isPersisted: false },
+  { id: 'd10', title: 'Equity calculator for early hires', pitch: 'Enter your offer, the company stage, and dilution assumptions — get a plain-English breakdown of what your options are actually worth.', tags: ['Fintech', 'Founders'], heat: 88, builderCount: 11, isPersisted: false },
+  { id: 'd11', title: 'On-demand TA for coding bootcamps', pitch: 'AI tutor that unblocks students in under 2 minutes. Escalates to a human when it can\'t solve it. Bootcamps pay per resolution.', tags: ['EdTech', 'AI'], heat: 80, builderCount: 7, isPersisted: false },
+  { id: 'd12', title: 'Loom but async and structured', pitch: 'Record walkthroughs with automatic chapters, action item extraction, and searchable transcripts. Built for remote engineering teams.', tags: ['B2B', 'AI'], heat: 83, builderCount: 10, isPersisted: false },
 ];
 
 function SwipeCard({ idea, onSwipe }) {
