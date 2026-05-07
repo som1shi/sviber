@@ -58,6 +58,9 @@ const avatarColors = {
 };
 
 export default function ProjectsPage() {
+  const API = import.meta.env.DEV ? '' : (import.meta.env.VITE_API_URL || '');
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState(0);
 
   return (

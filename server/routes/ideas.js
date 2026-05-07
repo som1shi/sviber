@@ -20,7 +20,7 @@ router.get('/', async (req, res) => {
       .sort(sort)
       .skip(skip)
       .limit(Number(limit))
-      .populate('founder', 'displayName avatar elo.total');
+      .populate('founder', 'name profilePic elo.total');
 
     res.json(ideas);
   } catch (err) {
@@ -30,14 +30,65 @@ router.get('/', async (req, res) => {
 
 router.post('/', ensureAuthenticated, async (req, res) => {
   try {
-    const { title, description, tags } = req.body;
+    const { title, description, caption, notes, feedbackRequest, tags, projectUrl, imageUrl, imageUpload } = req.body;
     if (!title || !description) return res.status(400).json({ error: 'title and description required' });
-    const idea = await Idea.create({ founder: req.user._id, title, description, tags });
+    const normalizedTags = Array.isArray(tags)
+      ? tags
+      : String(tags || '')
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean);
+    const idea = await Idea.create({
+      founder: req.user._id,
+      title: String(title).trim(),
+      description: String(description).trim(),
+      caption: String(caption || '').trim(),
+      notes: String(notes || '').trim(),
+      feedbackRequest: String(feedbackRequest || '').trim(),
+      tags: normalizedTags,
+      projectUrl: String(projectUrl || '').trim(),
+      imageUrl: String(imageUrl || '').trim(),
+      imageUpload: imageUpload || undefined,
+    });
     res.status(201).json(idea);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+
+router.patch('/:id', ensureAuthenticated, async (req, res) => {
+  try {
+    const idea = await Idea.findOne({ _id: req.params.id, founder: req.user._id });
+    if (!idea) return res.status(404).json({ error: 'Idea not found' });
+
+    const { title, description, caption, notes, feedbackRequest, tags, projectUrl, imageUrl, imageUpload, status } = req.body;
+    if (title !== undefined) idea.title = String(title).trim();
+    if (description !== undefined) idea.description = String(description).trim();
+    if (caption !== undefined) idea.caption = String(caption || '').trim();
+    if (notes !== undefined) idea.notes = String(notes || '').trim();
+    if (feedbackRequest !== undefined) idea.feedbackRequest = String(feedbackRequest || '').trim();
+    if (tags !== undefined) {
+      idea.tags = Array.isArray(tags)
+        ? tags.map((t) => String(t).trim()).filter(Boolean)
+        : String(tags || '')
+          .split(',')
+          .map((t) => t.trim())
+          .filter(Boolean);
+    }
+    if (projectUrl !== undefined) idea.projectUrl = String(projectUrl || '').trim();
+    if (imageUrl !== undefined) idea.imageUrl = String(imageUrl || '').trim();
+    if (imageUpload !== undefined) idea.imageUpload = imageUpload || undefined;
+    if (status !== undefined && ['open', 'building', 'launched'].includes(status)) {
+      idea.status = status;
+    }
+
+    await idea.save();
+    res.json(idea);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 router.post('/:id/vote', ensureAuthenticated, async (req, res) => {
   try {

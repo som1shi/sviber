@@ -1,14 +1,19 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Box, Typography, Tabs, Tab, Card, CardContent,
-  Avatar, Chip, IconButton, Button, Divider
+  Avatar, Chip, IconButton, Button, Divider, Dialog, DialogTitle, DialogContent,
+  DialogActions, TextField, CircularProgress, Alert, MenuItem
 } from '@mui/material';
 import {
   KeyboardArrowUp, KeyboardArrowDown, Star, StarBorder,
   Build, Add, LocalFireDepartment
 } from '@mui/icons-material';
+import { useLocation } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 const TABS = ['Hot', 'New', 'Building', 'Mine'];
+// In dev, use same-origin paths so cookies work via Vite proxy.
+const API = import.meta.env.DEV ? '' : (import.meta.env.VITE_API_URL || '');
 
 const mockIdeas = [
   {
@@ -140,9 +145,32 @@ function IdeaCard({ idea, onUpvote, onToggleSave, onToggleBuild }) {
         <Typography sx={{ fontWeight: 700, fontSize: 15, mb: 0.75, lineHeight: 1.3 }}>
           {idea.title}
         </Typography>
+        {idea.caption && (
+          <Typography sx={{ fontSize: 13, color: '#374151', mb: 1.25, lineHeight: 1.5 }}>
+            {idea.caption}
+          </Typography>
+        )}
         <Typography sx={{ fontSize: 13, color: '#6b7280', mb: 2, lineHeight: 1.5 }}>
           {idea.description}
         </Typography>
+        {(idea.feedbackRequest || idea.notes) && (
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
+            {idea.feedbackRequest && (
+              <Chip
+                size="small"
+                label={`Feedback: ${idea.feedbackRequest}`}
+                sx={{ bgcolor: '#eef2ff', color: '#3730a3', border: '1px solid #e5e7eb' }}
+              />
+            )}
+            {idea.notes && (
+              <Chip
+                size="small"
+                label="Has notes"
+                sx={{ bgcolor: '#f9fafb', color: '#374151', border: '1px solid #e5e7eb' }}
+              />
+            )}
+          </Box>
+        )}
 
         <Box sx={{ display: 'flex', gap: 0.75, mb: 2, flexWrap: 'wrap' }}>
           {idea.tags.map(tag => (
@@ -199,12 +227,112 @@ function IdeaCard({ idea, onUpvote, onToggleSave, onToggleBuild }) {
 }
 
 export default function CommunityPage() {
-  const [tab, setTab] = useState(0);
-  const [ideas, setIdeas] = useState(mockIdeas);
+  const { user } = useAuth();
+  const location = useLocation();
+  const tabIndexFromNav = location.state?.tabIndex;
+  const safeTabFromNav = Number.isInteger(tabIndexFromNav) && tabIndexFromNav >= 0 && tabIndexFromNav < TABS.length
+    ? tabIndexFromNav
+    : 0;
+  const [tab, setTab] = useState(safeTabFromNav);
+  useEffect(() => {
+    if (Number.isInteger(tabIndexFromNav) && tabIndexFromNav >= 0 && tabIndexFromNav < TABS.length) {
+      setTab(tabIndexFromNav);
+    }
+  }, [tabIndexFromNav]);
+  const [ideas, setIdeas] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [postOpen, setPostOpen] = useState(false);
+  const [projects, setProjects] = useState([]);
+  const [projectsLoading, setProjectsLoading] = useState(false);
+  const [projectsError, setProjectsError] = useState('');
+  const [selectedProjectId, setSelectedProjectId] = useState('');
+  const [postCaption, setPostCaption] = useState('');
+  const [postNotes, setPostNotes] = useState('');
+  const [postFeedbackRequest, setPostFeedbackRequest] = useState('');
+  const [posting, setPosting] = useState(false);
+  const [editIdea, setEditIdea] = useState(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editTags, setEditTags] = useState('');
+  const [editProjectUrl, setEditProjectUrl] = useState('');
+  const [editImageFile, setEditImageFile] = useState(null);
+  const [editing, setEditing] = useState(false);
 
   const totalUpvotes = ideas.reduce((sum, i) => sum + i.upvotes, 0);
   const wantToBuild = ideas.reduce((sum, i) => sum + i.builders, 0);
-  const myElo = 340;
+  const myElo =
+    (typeof user?.elo?.total === 'number' ? user.elo.total : undefined)
+    ?? (typeof user?.elo === 'number' ? user.elo : undefined)
+    ?? 0;
+
+  const tabName = useMemo(() => {
+    const selected = Number.isInteger(tab) && tab >= 0 && tab < TABS.length ? tab : 0;
+    return TABS[selected].toLowerCase();
+  }, [tab]);
+
+  const loadIdeas = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      const res = await fetch(`${API}/api/ideas?tab=${tabName}`, { credentials: 'include' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || 'Failed to load ideas');
+      }
+      const data = await res.json();
+      const mapped = (Array.isArray(data) ? data : []).map((idea) => ({
+        id: idea._id,
+        founderId: idea.founder?._id,
+        author: idea.founder?.name || 'Founder',
+        authorElo: idea.founder?.elo?.total ?? 0,
+        role: idea.founder?.title || 'Founder',
+        title: idea.title,
+        caption: idea.caption || '',
+        notes: idea.notes || '',
+        feedbackRequest: idea.feedbackRequest || '',
+        description: idea.description,
+        heat: idea.eloScore || 0,
+        upvotes: idea.upvotes || 0,
+        downvotes: idea.downvotes || 0,
+        builders: idea.builderCount || 0,
+        tags: idea.tags || [],
+        projectUrl: idea.projectUrl || '',
+        imageUrl: idea.imageUrl || '',
+        saved: false,
+        building: idea.status === 'building',
+        isNew: Date.now() - new Date(idea.createdAt).getTime() < 24 * 60 * 60 * 1000,
+      }));
+      setIdeas(mapped);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadIdeas();
+  }, [tabName]);
+
+  const loadProjects = async () => {
+    try {
+      setProjectsError('');
+      setProjectsLoading(true);
+      const res = await fetch(`${API}/api/projects`, { credentials: 'include' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || 'Failed to load projects');
+      }
+      const data = await res.json();
+      setProjects(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setProjectsError(err.message || 'Failed to load projects');
+      setProjects([]);
+    } finally {
+      setProjectsLoading(false);
+    }
+  };
 
   const handleUpvote = (id) => {
     setIdeas(prev => prev.map(i => i.id === id ? { ...i, upvotes: i.upvotes + 1 } : i));
@@ -224,6 +352,104 @@ export default function CommunityPage() {
     ? [...ideas].sort((a, b) => b.id - a.id)
     : [...ideas].sort((a, b) => b.heat - a.heat);
 
+  const handlePostIdea = async () => {
+    try {
+      setPosting(true);
+      setError('');
+      if (!selectedProjectId) {
+        throw new Error('Pick a project to share');
+      }
+
+      const res = await fetch(`${API}/api/projects/${selectedProjectId}/publish`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          caption: postCaption,
+          notes: postNotes,
+          feedbackRequest: postFeedbackRequest,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || 'Failed to publish project');
+      }
+      setPostOpen(false);
+      setSelectedProjectId('');
+      setPostCaption('');
+      setPostNotes('');
+      setPostFeedbackRequest('');
+      setTab(1);
+      loadIdeas();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setPosting(false);
+    }
+  };
+
+  const openEdit = (idea) => {
+    setEditIdea(idea);
+    setEditTitle(idea.title || '');
+    setEditDescription(idea.description || '');
+    setEditTags((idea.tags || []).join(', '));
+    setEditProjectUrl(idea.projectUrl || '');
+    setEditImageFile(null);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editIdea) return;
+    try {
+      setEditing(true);
+      setError('');
+
+      let imageUpload;
+      let imageUrl = editIdea.imageUrl || '';
+      if (editImageFile) {
+        const fd = new FormData();
+        fd.append('file', editImageFile);
+        const uploadRes = await fetch(`${API}/api/uploads?kind=idea`, {
+          method: 'POST',
+          credentials: 'include',
+          body: fd,
+        });
+        if (!uploadRes.ok) {
+          const body = await uploadRes.json().catch(() => ({}));
+          throw new Error(body.error || 'Image upload failed');
+        }
+        const uploaded = await uploadRes.json();
+        imageUpload = uploaded._id;
+        imageUrl = `${API}${uploaded.url}`;
+      }
+
+      const res = await fetch(`${API}/api/ideas/${editIdea.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          title: editTitle,
+          description: editDescription,
+          tags: editTags,
+          projectUrl: editProjectUrl,
+          imageUpload,
+          imageUrl,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || 'Failed to update post');
+      }
+
+      setEditIdea(null);
+      loadIdeas();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setEditing(false);
+    }
+  };
+
+
   return (
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 3 }}>
@@ -238,6 +464,10 @@ export default function CommunityPage() {
         <Button
           variant="contained"
           startIcon={<Add />}
+          onClick={() => {
+            setPostOpen(true);
+            loadProjects();
+          }}
           sx={{
             bgcolor: '#111',
             color: '#fff',
@@ -294,6 +524,57 @@ export default function CommunityPage() {
           ))
         )}
       </Box>
+
+      <Dialog open={postOpen} onClose={() => setPostOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Share a project to Community</DialogTitle>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: 1 }}>
+          {projectsError && <Alert severity="error">{projectsError}</Alert>}
+          <TextField
+            select
+            label="Choose a project"
+            value={selectedProjectId}
+            onChange={(e) => setSelectedProjectId(e.target.value)}
+            fullWidth
+            disabled={projectsLoading}
+            helperText={projectsLoading ? 'Loading projects...' : (projects.length ? 'Pick a draft project (or published) to share.' : 'No projects yet. Create one in Projects first.')}
+          >
+            {projects.map((p) => (
+              <MenuItem key={p._id} value={p._id}>
+                {p.name}{p.publishedToCommunity || p.idea ? ' (published)' : ' (draft)'}
+              </MenuItem>
+            ))}
+          </TextField>
+          <TextField label="Caption (optional)" value={postCaption} onChange={(e) => setPostCaption(e.target.value)} fullWidth />
+          <TextField label="Notes (optional)" value={postNotes} onChange={(e) => setPostNotes(e.target.value)} multiline minRows={4} fullWidth />
+          <TextField label="Ask for feedback (optional)" value={postFeedbackRequest} onChange={(e) => setPostFeedbackRequest(e.target.value)} placeholder="Pricing, landing page copy, onboarding, etc." fullWidth />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPostOpen(false)} disabled={posting}>Cancel</Button>
+          <Button variant="contained" onClick={handlePostIdea} disabled={posting || !selectedProjectId}>
+            {posting ? 'Posting...' : 'Post'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(editIdea)} onClose={() => setEditIdea(null)} fullWidth maxWidth="sm">
+        <DialogTitle>Edit project post</DialogTitle>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: 1 }}>
+          <TextField label="Title" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} fullWidth />
+          <TextField label="Description" value={editDescription} onChange={(e) => setEditDescription(e.target.value)} multiline minRows={4} fullWidth />
+          <TextField label="Tags (comma separated)" value={editTags} onChange={(e) => setEditTags(e.target.value)} fullWidth />
+          <TextField label="Project URL" value={editProjectUrl} onChange={(e) => setEditProjectUrl(e.target.value)} fullWidth />
+          <Button variant="outlined" component="label">
+            {editImageFile ? `New image: ${editImageFile.name}` : 'Replace image (optional)'}
+            <input hidden type="file" accept="image/*" onChange={(e) => setEditImageFile(e.target.files?.[0] || null)} />
+          </Button>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditIdea(null)} disabled={editing}>Cancel</Button>
+          <Button variant="contained" onClick={handleSaveEdit} disabled={editing || !editTitle.trim() || !editDescription.trim()}>
+            {editing ? 'Saving...' : 'Save changes'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

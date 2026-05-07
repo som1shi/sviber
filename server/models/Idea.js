@@ -4,6 +4,10 @@ const ideaSchema = new mongoose.Schema({
   founder: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   title: { type: String, required: true },
   description: { type: String, required: true },
+  // Community post metadata for a project share
+  caption: { type: String, default: '' },
+  notes: { type: String, default: '' },
+  feedbackRequest: { type: String, default: '' },
   tags: [{ type: String }],
   upvotes: { type: Number, default: 0 },
   downvotes: { type: Number, default: 0 },
