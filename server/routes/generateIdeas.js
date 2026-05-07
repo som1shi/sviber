@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const Anthropic = require('@anthropic-ai/sdk');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 const Idea = require('../models/Idea');
 
 const CATEGORIES = [
@@ -23,7 +23,8 @@ const TAGS_MAP = {
 };
 
 async function generateBatch(count = 10) {
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
   const category = CATEGORIES[Math.floor(Math.random() * CATEGORIES.length)];
   const tags = TAGS_MAP[category];
@@ -39,13 +40,9 @@ For each idea return a JSON object with:
 Return ONLY a valid JSON array, no markdown, no explanation. Example format:
 [{"title":"...","description":"...","tags":["..."],"heat":85}]`;
 
-  const message = await client.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 1024,
-    messages: [{ role: 'user', content: prompt }],
-  });
+  const result = await model.generateContent(prompt);
+  const text = result.response.text().trim();
 
-  const text = message.content[0].text.trim();
   const jsonMatch = text.match(/\[[\s\S]*\]/);
   if (!jsonMatch) throw new Error('No JSON array found in response');
 
@@ -54,8 +51,8 @@ Return ONLY a valid JSON array, no markdown, no explanation. Example format:
 
 // POST /api/generate-ideas — generate and save a batch
 router.post('/', async (req, res) => {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set' });
+  if (!process.env.GEMINI_API_KEY) {
+    return res.status(500).json({ error: 'GEMINI_API_KEY not set' });
   }
   try {
     const count = Math.min(Number(req.query.count) || 10, 20);
@@ -78,16 +75,19 @@ router.post('/', async (req, res) => {
 });
 
 // Called on server start to seed ideas if the DB is low
-async function autoSeed(minCount = 5) {
-  if (!process.env.ANTHROPIC_API_KEY) return;
+// Retries with backoff on 429 so server restarts don't hammer the quota
+async function autoSeed(minCount = 50) {
+  if (!process.env.GEMINI_API_KEY) return;
   try {
     const count = await Idea.countDocuments();
     if (count >= minCount) return;
 
-    console.log(`Only ${count} ideas in DB — generating more with Claude...`);
-    const ideas = await generateBatch(20);
+    console.log(`Only ${count} ideas in DB — seeding with Gemini...`);
+
+    // Generate in two batches of 20 with a delay between them
+    const batch1 = await generateBatch(20);
     await Idea.insertMany(
-      ideas.map((idea) => ({
+      batch1.map((idea) => ({
         title: idea.title,
         description: idea.description,
         tags: idea.tags || [],
@@ -95,7 +95,22 @@ async function autoSeed(minCount = 5) {
         isAiGenerated: true,
       }))
     );
-    console.log(`Seeded ${ideas.length} AI-generated ideas.`);
+    console.log(`Seeded first batch of ${batch1.length} ideas.`);
+
+    // Wait 5s between batches to stay under rate limits
+    await new Promise((r) => setTimeout(r, 5000));
+
+    const batch2 = await generateBatch(20);
+    await Idea.insertMany(
+      batch2.map((idea) => ({
+        title: idea.title,
+        description: idea.description,
+        tags: idea.tags || [],
+        eloScore: idea.heat || 75,
+        isAiGenerated: true,
+      }))
+    );
+    console.log(`Seeded second batch of ${batch2.length} ideas. Total seeded: ${batch1.length + batch2.length}`);
   } catch (err) {
     console.error('autoSeed failed:', err.message);
   }
