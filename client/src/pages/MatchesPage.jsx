@@ -14,6 +14,8 @@ import { Favorite as FavoriteIcon } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
+const API = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+
 const SIGNALS = [
   { key: 'ideaAlignment', label: 'Same idea', weightPct: 40, color: '#3b82f6' },
   { key: 'skillsFit', label: 'Skills fit', weightPct: 30, color: '#10b981' },
@@ -73,7 +75,7 @@ export default function MatchesPage() {
       return;
     }
 
-    fetch('/api/matches', { credentials: 'include' })
+    fetch(`${API}/api/matches`, { credentials: 'include' })
       .then(async (res) => {
         if (res.status === 401) return [];
         if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to load matches');
@@ -94,7 +96,7 @@ export default function MatchesPage() {
 
   const updateStatus = async (matchId, status) => {
     try {
-      const res = await fetch(`/api/matches/${matchId}/status`, {
+      const res = await fetch(`${API}/api/matches/${matchId}/status`, {
         method: 'PATCH',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },

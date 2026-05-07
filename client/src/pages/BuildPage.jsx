@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Box, Typography, Avatar, TextField, IconButton, LinearProgress } from '@mui/material';
 import { ArrowUpward as SendIcon } from '@mui/icons-material';
 
+const API = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 const PURPLE = '#7C5CFC';
 const GREEN  = '#00E5A0';
 
@@ -259,7 +260,7 @@ export default function BuildPage() {
     if (phase === 'q1') {
       setQ1Answer(text);
       try {
-        const res = await fetch('/api/build/chat', {
+        const res = await fetch(`${API}/api/build/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ideaTitle: MATCH.ideaTitle, phase: 'q1', q1Answer: text }),
@@ -275,7 +276,7 @@ export default function BuildPage() {
       }
     } else if (phase === 'q2') {
       try {
-        const res = await fetch('/api/build/chat', {
+        const res = await fetch(`${API}/api/build/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ideaTitle: MATCH.ideaTitle, phase: 'q2', q1Answer, q2Answer: text }),
@@ -292,7 +293,7 @@ export default function BuildPage() {
       simulateProgress();
 
       try {
-        const res = await fetch('/api/build/generate', {
+        const res = await fetch(`${API}/api/build/generate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ideaTitle: MATCH.ideaTitle, problem: q1Answer, targetUser: text }),
@@ -313,7 +314,7 @@ export default function BuildPage() {
         }, 600);
 
         try {
-          const publishRes = await fetch('/api/build/publish', {
+          const publishRes = await fetch(`${API}/api/build/publish`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ appCode: generatedCode, ideaTitle: MATCH.ideaTitle, github1: MATCH.myGithub, github2: MATCH.partnerGithub }),
