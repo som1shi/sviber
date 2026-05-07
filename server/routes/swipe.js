@@ -8,6 +8,7 @@ const Survey = require('../models/Survey');
 const { ensureAuthenticated } = require('../middleware/auth');
 const { onSwipe } = require('../lib/elo');
 const { structuredScore } = require('../lib/matching');
+const { matchPairKey } = require('../services/matchScoring');
 
 router.get('/feed', ensureAuthenticated, async (req, res) => {
   try {
@@ -22,7 +23,7 @@ router.get('/feed', ensureAuthenticated, async (req, res) => {
     })
       .sort({ eloScore: -1 })
       .limit(Number(limit))
-      .populate('founder', 'displayName avatar elo.total');
+      .populate('founder', 'name profilePic elo.total');
 
     res.json(ideas);
   } catch (err) {
@@ -37,13 +38,14 @@ router.post('/', ensureAuthenticated, async (req, res) => {
       return res.status(400).json({ error: 'ideaId and direction (right|left|up) required' });
     }
 
-    const idea = await Idea.findById(ideaId);
+    const idea = await Idea.findById(ideaId).select('founder').lean();
     if (!idea) return res.status(404).json({ error: 'Idea not found' });
-    if (idea.founder.toString() === req.user._id.toString()) {
+    if (String(idea.founder) === String(req.user._id)) {
       return res.status(403).json({ error: 'Cannot swipe on your own idea' });
     }
 
-    const previousSwipe = await Swipe.findOne({ user: req.user._id, idea: ideaId });
+    const now = new Date();
+    const prev = await Swipe.findOne({ user: req.user._id, idea: ideaId });
 
     const swipe = await Swipe.findOneAndUpdate(
       { user: req.user._id, idea: ideaId },
@@ -53,52 +55,72 @@ router.post('/', ensureAuthenticated, async (req, res) => {
 
     onSwipe(req.user._id, direction === 'right').catch((err) => console.error('[elo] onSwipe error:', err.message));
 
-    let match = null;
+    await User.findByIdAndUpdate(req.user._id, {
+      lastActiveAt: now,
+      lastSwipeAt: now,
+    });
+
+    if (direction === 'right' && (!prev || prev.direction !== 'right')) {
+      await Idea.findByIdAndUpdate(ideaId, { $inc: { builderCount: 1 } });
+    }
+    if (direction !== 'right' && prev && prev.direction === 'right') {
+      await Idea.findByIdAndUpdate(ideaId, { $inc: { builderCount: -1 } });
+    }
+
+    const matchesCreated = [];
 
     if (direction === 'right') {
-      if (previousSwipe?.direction !== 'right') {
-        await Idea.findByIdAndUpdate(ideaId, { $inc: { builderCount: 1 } });
-      }
-
       const otherSwipes = await Swipe.find({
         idea: ideaId,
         direction: 'right',
         user: { $ne: req.user._id },
       });
 
-      if (otherSwipes.length > 0) {
-        const [currentUser, currentSurvey] = await Promise.all([
-          User.findById(req.user._id),
-          Survey.findOne({ userId: req.user._id }).lean(),
+      const [currentUser, currentSurvey] = await Promise.all([
+        User.findById(req.user._id),
+        Survey.findOne({ userId: req.user._id }).lean(),
+      ]);
+
+      if (!currentUser) return res.status(404).json({ error: 'User not found' });
+
+      for (const other of otherSwipes) {
+        const pk = matchPairKey(ideaId, req.user._id, other.user);
+        const exists = await Match.findOne({ pairKey: pk });
+        if (exists) continue;
+
+        const [otherUser, otherSurvey] = await Promise.all([
+          User.findById(other.user),
+          Survey.findOne({ userId: other.user }).lean(),
         ]);
+        if (!otherUser) continue;
 
-        for (const other of otherSwipes) {
-          const exists = await Match.findOne({ idea: ideaId, users: { $all: [req.user._id, other.user] } });
-          if (exists) continue;
+        const score = structuredScore(currentSurvey, otherSurvey, currentUser, otherUser);
 
-          const [otherUser, otherSurvey] = await Promise.all([
-            User.findById(other.user),
-            Survey.findOne({ userId: other.user }).lean(),
-          ]);
+        const orderedUsers = [req.user._id, other.user].sort((a, b) =>
+          String(a).localeCompare(String(b))
+        );
 
-          const score = structuredScore(currentSurvey, otherSurvey, currentUser, otherUser);
-
-          match = await Match.create({
+        try {
+          const createdMatch = await Match.create({
             idea: ideaId,
-            users: [req.user._id, other.user],
+            pairKey: pk,
+            users: orderedUsers,
             score,
             scorePending: false,
           });
-
-          match = await match.populate([
-            { path: 'idea', select: 'title description tags' },
-            { path: 'users', select: 'displayName avatar role elo skills' },
-          ]);
+          const populatedMatch = await Match.findById(createdMatch._id)
+            .populate('idea', 'title description tags')
+            .populate('users', 'name profilePic elo.total skills primaryRole')
+            .lean();
+          matchesCreated.push(populatedMatch || createdMatch);
+        } catch (createErr) {
+          if (createErr.code === 11000) continue;
+          throw createErr;
         }
       }
     }
 
-    res.json({ swipe, match });
+    res.json({ swipe, matches: matchesCreated, match: matchesCreated[0] || null });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

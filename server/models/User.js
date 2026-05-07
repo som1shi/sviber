@@ -12,16 +12,22 @@ const eloStatsSchema = new mongoose.Schema({
   ideaNetVotes:      { type: Number, default: 0 },
 }, { _id: false });
 
+const ROLE_ENUM = ['FE', 'BE', 'AI', 'DESIGN', 'GTM', 'PM'];
+
 const userSchema = new mongoose.Schema(
   {
     googleId:    { type: String, required: true, unique: true },
-    displayName: { type: String, required: true },
+    name:        { type: String, required: true },
     email:       { type: String },
-    avatar:      { type: String },
-    role:        { type: String, default: 'Builder' },
+    profilePic:  { type: String },
+    title:       { type: String, default: 'Builder' },
     school:      { type: String, default: '' },
     bio:         { type: String, default: '' },
-    github:      { type: String, default: '' },
+    githubLink:  { type: String, default: '' },
+    primaryRole: { type: String, enum: ROLE_ENUM, default: 'PM' },
+    skills:      [{ type: String }],
+    lastActiveAt:{ type: Date, default: Date.now },
+    lastSwipeAt: { type: Date },
     elo: {
       total:        { type: Number, default: 1000 },
       breakdown: {

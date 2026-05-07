@@ -1,5 +1,9 @@
-require('dotenv').config();
-
+const path = require('path');
+const fs = require('fs');
+require('dotenv').config({
+  path: path.join(__dirname, '.env'),
+  override: true,
+});
 const express = require('express');
 const cors = require('cors');
 const { createServer } = require('http');
@@ -19,8 +23,25 @@ const io = new Server(httpServer, {
   cors: { origin: '*' },
 });
 
-app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5175', credentials: true }));
+const defaultDevOrigins = ['http://localhost:5173', 'http://localhost:5174', 'http://127.0.0.1:5173', 'http://127.0.0.1:5174'];
+const corsAllowed = process.env.CLIENT_URL
+  ? process.env.CLIENT_URL.split(',').map((s) => s.trim()).filter(Boolean)
+  : defaultDevOrigins;
+
+app.use(
+  cors({
+    origin: (origin, cb) => {
+      if (!origin || corsAllowed.includes(origin)) return cb(null, true);
+      return cb(null, false);
+    },
+    credentials: true,
+  })
+);
 app.use(express.json());
+
+const UPLOADS_ROOT = path.join(__dirname, 'uploads');
+if (!fs.existsSync(UPLOADS_ROOT)) fs.mkdirSync(UPLOADS_ROOT, { recursive: true });
+app.use('/uploads', express.static(UPLOADS_ROOT));
 
 app.use(session({
   secret: process.env.SESSION_SECRET || 'dev-secret',
@@ -50,6 +71,7 @@ app.use('/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/ideas', require('./routes/ideas'));
 app.use('/api/matches', require('./routes/matches'));
+app.use('/api/uploads', require('./routes/uploads').router);
 app.use('/api/projects', require('./routes/projects'));
 app.use('/api/swipe', require('./routes/swipe'));
 app.use('/api/build', require('./routes/build'));
@@ -94,11 +116,11 @@ io.on('connection', (socket) => {
       return;
     }
 
-    console.log(`message from ${socket.id} in room ${matchId}:`, content);
     const now = new Date();
 
     try {
       await Message.create({ matchId, senderId, senderInitials, senderColor, content });
+      await Match.findByIdAndUpdate(matchId, { lastMessageAt: now }).catch(() => {});
     } catch (_) {}
 
     socket.to(matchId).emit('chat-message', {
