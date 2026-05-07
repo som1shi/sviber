@@ -26,7 +26,7 @@ async function scoreResume(text) {
   if (!apiKey) throw new Error('GEMINI_URI not set');
 
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-preview-04-17' });
 
   const prompt = `You are evaluating a founder resume to assign a starting bonus score (0–200) for a co-founder matching app.
 
