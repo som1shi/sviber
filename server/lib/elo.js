@@ -71,7 +71,7 @@ function computeTotal(breakdown, startingBonus, lastActive) {
   return Math.max(0, Math.round(BASE + startingBonus + bucketAdj - decay));
 }
 
-async function recalcElo(userId) {
+async function recalcElo(userId, event = 'update') {
   await ensureEloSchema(userId);
   const user = await User.findById(userId);
   if (!user) return;
@@ -88,10 +88,12 @@ async function recalcElo(userId) {
     activity:    computeActivity(stats),
   };
   const total = computeTotal(breakdown, startingBonus, lastActive);
+  const historyEntry = { total, date: new Date(), event };
   await User.findByIdAndUpdate(userId, {
     'elo.breakdown':  breakdown,
     'elo.total':      total,
     'elo.lastActive': new Date(),
+    $push: { 'elo.history': { $each: [historyEntry], $slice: -50 } },
   });
   return total;
 }
@@ -103,31 +105,31 @@ async function onSwipe(userId, isRight) {
   const inc = { 'elo.stats.totalSwipes': 1 };
   if (isRight) inc['elo.stats.rightSwipes'] = 1;
   await User.findByIdAndUpdate(userId, { $inc: inc });
-  return recalcElo(userId);
+  return recalcElo(userId, 'swipe');
 }
 
 async function onMatchCollab(userIds) {
   await ensureEloSchema(userIds);
   await User.updateMany({ _id: { $in: userIds } }, { $inc: { 'elo.stats.matchesCollab': 1 } });
-  await Promise.all(userIds.map(recalcElo));
+  await Promise.all(userIds.map((id) => recalcElo(id, 'collab')));
 }
 
 async function onMatchPassed(userId) {
   await ensureEloSchema([userId]);
   await User.findByIdAndUpdate(userId, { $inc: { 'elo.stats.matchesPassed': 1 } });
-  return recalcElo(userId);
+  return recalcElo(userId, 'passed');
 }
 
 async function onProjectCompleted(userIds) {
   await ensureEloSchema(userIds);
   await User.updateMany({ _id: { $in: userIds } }, { $inc: { 'elo.stats.projectsLaunched': 1 } });
-  await Promise.all(userIds.map(recalcElo));
+  await Promise.all(userIds.map((id) => recalcElo(id, 'project launched')));
 }
 
 async function onProjectAbandoned(userIds) {
   await ensureEloSchema(userIds);
   await User.updateMany({ _id: { $in: userIds } }, { $inc: { 'elo.stats.projectsAbandoned': 1 } });
-  await Promise.all(userIds.map(recalcElo));
+  await Promise.all(userIds.map((id) => recalcElo(id, 'project abandoned')));
 }
 
 async function onPeerRating(userId, value) {
@@ -135,13 +137,13 @@ async function onPeerRating(userId, value) {
   await User.findByIdAndUpdate(userId, {
     $inc: { 'elo.stats.peerRatingSum': value, 'elo.stats.peerRatingCount': 1 },
   });
-  return recalcElo(userId);
+  return recalcElo(userId, 'peer rating');
 }
 
 async function onIdeaVote(founderId, delta) {
   await ensureEloSchema([founderId]);
   await User.findByIdAndUpdate(founderId, { $inc: { 'elo.stats.ideaNetVotes': delta } });
-  return recalcElo(founderId);
+  return recalcElo(founderId, 'idea vote');
 }
 
 module.exports = { recalcElo, ensureEloSchema, onSwipe, onMatchCollab, onMatchPassed, onProjectCompleted, onProjectAbandoned, onPeerRating, onIdeaVote };

@@ -22,18 +22,20 @@ export default function ProfilePage() {
 
   if (loading) return <CircularProgress sx={{ m: 4 }} />;
 
-  const eloField = profileUser?.elo;
-  const breakdown = (eloField && typeof eloField === 'object') ? (eloField.breakdown ?? {}) : {};
-  const eloTotal = (eloField && typeof eloField === 'object') ? (eloField.total ?? 1000) : 1000;
+  // elo is a flat number from meShape; eloDetail has breakdown + history
+  const eloTotal = profileUser?.elo ?? 1000;
+  const eloDetail = profileUser?.eloDetail ?? {};
+  const breakdown = eloDetail.breakdown ?? {};
+  const eloHistory = Array.isArray(eloDetail.history) ? eloDetail.history : [];
 
   const user = {
-    name: profileUser?.displayName || '',
-    title: profileUser?.role || 'Builder',
+    name: profileUser?.name || profileUser?.displayName || '',
+    title: profileUser?.title || profileUser?.role || 'Builder',
     school: profileUser?.school || '',
     elo: Number(eloTotal) || 1000,
     bio: profileUser?.bio || '',
-    profilePic: profileUser?.avatar || '',
-    githubLink: profileUser?.github || '',
+    profilePic: profileUser?.profilePic || profileUser?.avatar || '',
+    githubLink: profileUser?.githubLink || profileUser?.github || '',
   };
 
   const projects = [];
@@ -65,7 +67,7 @@ export default function ProfilePage() {
 
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
           <ActiveProjects projects={projects} />
-          <EloBreakdown elo={user.elo} stats={eloStats} />
+          <EloBreakdown elo={user.elo} stats={eloStats} history={eloHistory} />
         </Box>
       </Box>
     </Box>
