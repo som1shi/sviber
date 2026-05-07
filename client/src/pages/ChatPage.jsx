@@ -620,6 +620,21 @@ export default function ChatPage() {
   const [profileModal, setProfileModal] = useState(null);
   const [allMatches, setAllMatches] = useState([]);
 
+  // Reset when switching between chats
+  useEffect(() => {
+    if (state?.match) {
+      setMatch(state.match);
+      setMessages([]);
+      setChatError('');
+      setLoadingMatch(false);
+    } else {
+      setMatch(null);
+      setMessages([]);
+      setChatError('');
+      setLoadingMatch(true);
+    }
+  }, [matchId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     fetch(`${API}/api/matches`, { credentials: 'include' })
       .then((r) => r.ok ? r.json() : [])
@@ -843,7 +858,7 @@ export default function ChatPage() {
           <div ref={bottomRef} />
         </Box>
 
-        <MessageInput channel={channel} onSend={handleSend} />
+        <MessageInput key={matchId} channel={channel} onSend={handleSend} />
       </Box>
 
       {profileModal && <ProfileModal user={profileModal} onClose={() => setProfileModal(null)} />}
