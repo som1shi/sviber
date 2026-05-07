@@ -3,6 +3,7 @@ const router = express.Router();
 const Idea = require('../models/Idea');
 const IdeaVote = require('../models/IdeaVote');
 const { ensureAuthenticated } = require('../middleware/auth');
+const { onIdeaVote } = require('../lib/elo');
 
 router.get('/', async (req, res) => {
   try {
@@ -19,7 +20,7 @@ router.get('/', async (req, res) => {
       .sort(sort)
       .skip(skip)
       .limit(Number(limit))
-      .populate('founder', 'name profilePic elo.total');
+      .populate('founder', 'displayName avatar elo.total');
 
     res.json(ideas);
   } catch (err) {
@@ -43,17 +44,21 @@ router.post('/:id/vote', ensureAuthenticated, async (req, res) => {
     const { value } = req.body;
     if (value !== 1 && value !== -1) return res.status(400).json({ error: 'value must be 1 or -1' });
 
+    const idea = await Idea.findById(req.params.id);
+    if (!idea) return res.status(404).json({ error: 'Idea not found' });
+
     const existing = await IdeaVote.findOne({ user: req.user._id, idea: req.params.id });
+
+    let netDelta = 0;
 
     if (existing) {
       if (existing.value === value) {
-        // toggle off
         await existing.deleteOne();
         const field = value === 1 ? 'upvotes' : 'downvotes';
         await Idea.findByIdAndUpdate(req.params.id, { $inc: { [field]: -1, eloScore: -value } });
+        onIdeaVote(idea.founder, -value).catch(() => {});
         return res.json({ removed: true });
       } else {
-        // flip vote
         existing.value = value;
         await existing.save();
         const addField = value === 1 ? 'upvotes' : 'downvotes';
@@ -61,6 +66,9 @@ router.post('/:id/vote', ensureAuthenticated, async (req, res) => {
         await Idea.findByIdAndUpdate(req.params.id, {
           $inc: { [addField]: 1, [removeField]: -1, eloScore: value * 2 },
         });
+        netDelta = value * 2;
+        // Update founder's ideaNetVotes and recalc (fire-and-forget)
+        onIdeaVote(idea.founder, netDelta).catch(() => {});
         return res.json({ updated: true, value });
       }
     }
@@ -68,6 +76,10 @@ router.post('/:id/vote', ensureAuthenticated, async (req, res) => {
     await IdeaVote.create({ user: req.user._id, idea: req.params.id, value });
     const field = value === 1 ? 'upvotes' : 'downvotes';
     await Idea.findByIdAndUpdate(req.params.id, { $inc: { [field]: 1, eloScore: value } });
+    netDelta = value;
+
+    onIdeaVote(idea.founder, netDelta).catch(() => {});
+
     res.status(201).json({ created: true, value });
   } catch (err) {
     res.status(500).json({ error: err.message });

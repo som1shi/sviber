@@ -12,4 +12,6 @@ const ideaSchema = new mongoose.Schema({
   status: { type: String, enum: ['open', 'building', 'launched'], default: 'open' },
 }, { timestamps: true });
 
+ideaSchema.index({ founder: 1, status: 1, eloScore: -1 });
+
 module.exports = mongoose.model('Idea', ideaSchema);

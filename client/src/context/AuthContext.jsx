@@ -1,13 +1,15 @@
+/* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useState, useEffect } from 'react';
 
 const AuthContext = createContext(null);
+const API = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/auth/current-user', { credentials: 'include' })
+    fetch(`${API}/auth/current-user`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => setUser(data))
       .catch(() => setUser(null))
@@ -15,11 +17,11 @@ export function AuthProvider({ children }) {
   }, []);
 
   const login = () => {
-    window.location.href = '/auth/google';
+    window.location.href = `${API}/auth/google`;
   };
 
   const logout = () => {
-    window.location.href = '/auth/logout';
+    window.location.href = `${API}/auth/logout`;
   };
 
   return (

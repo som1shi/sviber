@@ -4,21 +4,31 @@ const Swipe = require('../models/Swipe');
 const Idea = require('../models/Idea');
 const Match = require('../models/Match');
 const User = require('../models/User');
+const Survey = require('../models/Survey');
 const { ensureAuthenticated } = require('../middleware/auth');
+const { onSwipe } = require('../lib/elo');
+const { structuredScore } = require('../lib/matching');
 
-function computeMatchScore(userA, userB) {
-  const eloCompatibility = Math.max(0, 100 - Math.abs(userA.elo.total - userB.elo.total) / 10);
-  const skillsFit = (() => {
-    const a = new Set(userA.skills);
-    const b = new Set(userB.skills);
-    const shared = [...a].filter((s) => b.has(s)).length;
-    const total = new Set([...a, ...b]).size;
-    return total === 0 ? 50 : Math.round((1 - shared / total) * 100);
-  })();
-  const activity = Math.min(100, (userA.elo.total + userB.elo.total) / 2);
-  const total = Math.round((100 + eloCompatibility + skillsFit + activity) / 4);
-  return { ideaAlignment: 100, eloCompatibility: Math.round(eloCompatibility), skillsFit, activity: Math.round(activity), total };
-}
+router.get('/feed', ensureAuthenticated, async (req, res) => {
+  try {
+    const { limit = 10 } = req.query;
+
+    const swiped = await Swipe.find({ user: req.user._id }).distinct('idea');
+
+    const ideas = await Idea.find({
+      _id: { $nin: swiped },
+      founder: { $ne: req.user._id },
+      status: 'open',
+    })
+      .sort({ eloScore: -1 })
+      .limit(Number(limit))
+      .populate('founder', 'displayName avatar elo.total');
+
+    res.json(ideas);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 router.post('/', ensureAuthenticated, async (req, res) => {
   try {
@@ -27,16 +37,28 @@ router.post('/', ensureAuthenticated, async (req, res) => {
       return res.status(400).json({ error: 'ideaId and direction (right|left|up) required' });
     }
 
+    const idea = await Idea.findById(ideaId);
+    if (!idea) return res.status(404).json({ error: 'Idea not found' });
+    if (idea.founder.toString() === req.user._id.toString()) {
+      return res.status(403).json({ error: 'Cannot swipe on your own idea' });
+    }
+
+    const previousSwipe = await Swipe.findOne({ user: req.user._id, idea: ideaId });
+
     const swipe = await Swipe.findOneAndUpdate(
       { user: req.user._id, idea: ideaId },
       { direction },
       { upsert: true, new: true }
     );
 
+    onSwipe(req.user._id, direction === 'right').catch((err) => console.error('[elo] onSwipe error:', err.message));
+
     let match = null;
 
     if (direction === 'right') {
-      await Idea.findByIdAndUpdate(ideaId, { $inc: { builderCount: 1 } });
+      if (previousSwipe?.direction !== 'right') {
+        await Idea.findByIdAndUpdate(ideaId, { $inc: { builderCount: 1 } });
+      }
 
       const otherSwipes = await Swipe.find({
         idea: ideaId,
@@ -44,20 +66,35 @@ router.post('/', ensureAuthenticated, async (req, res) => {
         user: { $ne: req.user._id },
       });
 
-      const currentUser = await User.findById(req.user._id);
+      if (otherSwipes.length > 0) {
+        const [currentUser, currentSurvey] = await Promise.all([
+          User.findById(req.user._id),
+          Survey.findOne({ userId: req.user._id }).lean(),
+        ]);
 
-      for (const other of otherSwipes) {
-        const exists = await Match.findOne({ idea: ideaId, users: { $all: [req.user._id, other.user] } });
-        if (exists) continue;
+        for (const other of otherSwipes) {
+          const exists = await Match.findOne({ idea: ideaId, users: { $all: [req.user._id, other.user] } });
+          if (exists) continue;
 
-        const otherUser = await User.findById(other.user);
-        const score = computeMatchScore(currentUser, otherUser);
+          const [otherUser, otherSurvey] = await Promise.all([
+            User.findById(other.user),
+            Survey.findOne({ userId: other.user }).lean(),
+          ]);
 
-        match = await Match.create({
-          idea: ideaId,
-          users: [req.user._id, other.user],
-          score,
-        });
+          const score = structuredScore(currentSurvey, otherSurvey, currentUser, otherUser);
+
+          match = await Match.create({
+            idea: ideaId,
+            users: [req.user._id, other.user],
+            score,
+            scorePending: false,
+          });
+
+          match = await match.populate([
+            { path: 'idea', select: 'title description tags' },
+            { path: 'users', select: 'displayName avatar role elo skills' },
+          ]);
+        }
       }
     }
 

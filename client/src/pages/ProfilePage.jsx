@@ -1,49 +1,51 @@
-import { Box, Typography } from '@mui/material';
+import { useState, useEffect } from 'react';
+import { Box, Typography, CircularProgress } from '@mui/material';
 import ProfileCard from '../components/ProfileCard';
 import ActiveProjects from '../components/ActiveProjects';
 import EloBreakdown from '../components/EloBreakdown';
 
+const API = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+
 export default function ProfilePage() {
-  // Mock user data
-  const mockUser = {
-    name: 'Dylan Dang',
-    title: 'Builder',
-    school: "UC Berkeley '27",
-    elo: -223,
-    bio: "Hey, I'm Dylan! I'm a third year studying data science. I like eating malatang, doomscrolling depop, playing brawl stars, running, and Mohammed Amini!",
-    profilePic: '', // Add image URL here later
-    githubLink: 'github.com/dylandango',
+  const [profileUser, setProfileUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch(`${API}/api/users/me`, { credentials: 'include' })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        setProfileUser(data);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  if (loading) return <CircularProgress sx={{ m: 4 }} />;
+
+  const eloField = profileUser?.elo;
+  const breakdown = (eloField && typeof eloField === 'object') ? (eloField.breakdown ?? {}) : {};
+  const eloTotal = (eloField && typeof eloField === 'object') ? (eloField.total ?? 1000) : 1000;
+
+  const user = {
+    name: profileUser?.displayName || '',
+    title: profileUser?.role || 'Builder',
+    school: profileUser?.school || '',
+    elo: Number(eloTotal) || 1000,
+    bio: profileUser?.bio || '',
+    profilePic: profileUser?.avatar || '',
+    githubLink: profileUser?.github || '',
   };
 
-  // Mock projects data
-  const mockProjects = [
-    {
-      id: 1,
-      name: 'Malatang Optimizer',
-      emoji: '🍲',
-      user: '@sunminkim',
-      progress: 30,
-      progressColor: '#fbbf24',
-    },
-    {
-      id: 2,
-      name: 'Two Man Search',
-      emoji: '👯',
-      user: '@som1shi',
-      progress: 75,
-      progressColor: '#10b981',
-    },
-  ];
+  const projects = [];
 
-  // Mock ELO stats
-  const mockStats = [
-    { label: 'Responsiveness', value: 35, color: '#ef4444' },
-    { label: 'Ship Speed', value: 25, color: '#f59e0b' },
-    { label: 'Collaboration', value: 30, color: '#ef4444' },
+  const eloStats = [
+    { label: 'Reliability',  value: breakdown.reliability ?? 50, color: '#10b981' },
+    { label: 'Quality',      value: breakdown.quality     ?? 50, color: '#7C5CFC' },
+    { label: 'Activity',     value: breakdown.activity    ?? 50, color: '#f59e0b' },
   ];
 
   return (
-    <Box>
+    <Box sx={{ px: 1 }}>
       <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
         My Founder Profile
       </Typography>
@@ -51,23 +53,19 @@ export default function ProfilePage() {
         Your builder identity and track record.
       </Typography>
 
-      {/* Main grid layout */}
       <Box
         sx={{
           display: 'grid',
           gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
           gap: 3,
+          alignItems: 'start',
         }}
       >
-        {/* Left column */}
-        <Box>
-          <ProfileCard user={mockUser} />
-        </Box>
+        <ProfileCard user={user} />
 
-        {/* Right column */}
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-          <ActiveProjects projects={mockProjects} />
-          <EloBreakdown elo={mockUser.elo} stats={mockStats} />
+          <ActiveProjects projects={projects} />
+          <EloBreakdown elo={user.elo} stats={eloStats} />
         </Box>
       </Box>
     </Box>

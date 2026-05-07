@@ -18,6 +18,11 @@ export default function ActiveProjects({ projects }) {
       </Box>
 
       {/* Projects Grid */}
+      {projects.length === 0 && (
+        <Typography sx={{ color: '#9ca3af', fontSize: '0.9rem' }}>
+          No active projects yet. Start by matching with a co-founder!
+        </Typography>
+      )}
       <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 2 }}>
         {projects.map((project) => (
           <Box
