@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const Anthropic = require('@anthropic-ai/sdk');
 const Idea = require('../models/Idea');
 
 const CATEGORIES = [
@@ -23,8 +23,7 @@ const TAGS_MAP = {
 };
 
 async function generateBatch(count = 10) {
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   const category = CATEGORIES[Math.floor(Math.random() * CATEGORIES.length)];
   const tags = TAGS_MAP[category];
@@ -40,19 +39,23 @@ For each idea return a JSON object with:
 Return ONLY a valid JSON array, no markdown, no explanation. Example format:
 [{"title":"...","description":"...","tags":["..."],"heat":85}]`;
 
-  const result = await model.generateContent(prompt);
-  const text = result.response.text().trim();
+  const message = await client.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 1024,
+    messages: [{ role: 'user', content: prompt }],
+  });
 
+  const text = message.content[0].text.trim();
   const jsonMatch = text.match(/\[[\s\S]*\]/);
-  if (!jsonMatch) throw new Error('No JSON array found in Gemini response');
+  if (!jsonMatch) throw new Error('No JSON array found in response');
 
   return JSON.parse(jsonMatch[0]);
 }
 
 // POST /api/generate-ideas — generate and save a batch
 router.post('/', async (req, res) => {
-  if (!process.env.GEMINI_API_KEY) {
-    return res.status(500).json({ error: 'GEMINI_API_KEY not set' });
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set' });
   }
   try {
     const count = Math.min(Number(req.query.count) || 10, 20);
@@ -75,14 +78,14 @@ router.post('/', async (req, res) => {
 });
 
 // Called on server start to seed ideas if the DB is low
-async function autoSeed(minCount = 15) {
-  if (!process.env.GEMINI_API_KEY) return;
+async function autoSeed(minCount = 5) {
+  if (!process.env.ANTHROPIC_API_KEY) return;
   try {
     const count = await Idea.countDocuments();
     if (count >= minCount) return;
 
-    console.log(`Only ${count} ideas in DB — generating more with Gemini...`);
-    const ideas = await generateBatch(10);
+    console.log(`Only ${count} ideas in DB — generating more with Claude...`);
+    const ideas = await generateBatch(20);
     await Idea.insertMany(
       ideas.map((idea) => ({
         title: idea.title,

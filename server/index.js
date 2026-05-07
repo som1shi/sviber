@@ -35,7 +35,7 @@ app.use(session({
 }));
 
 const connectDB = require('./config/db');
-connectDB().then(() => autoSeed(15)).catch(() => {});
+connectDB().then(() => autoSeed(50)).catch(() => {});
 
 const passport = require('passport');
 require('./config/passport');

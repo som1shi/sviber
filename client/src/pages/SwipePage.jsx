@@ -216,12 +216,40 @@ export default function SwipePage() {
     setTimeout(() => setToast(''), 3000);
   };
 
+  const refillIfLow = async () => {
+    const remaining = ideas.length - current;
+    if (remaining > 5) return;
+    try {
+      await fetch(`${API}/api/generate-ideas`, { method: 'POST', credentials: 'include' });
+      const swiped = getSwipedIds();
+      const res = await fetch(`${API}/api/ideas?tab=hot&limit=50`, { credentials: 'include' });
+      if (!res.ok) return;
+      const data = await res.json();
+      const fresh = data
+        .filter((idea) => !swiped.has(String(idea._id)))
+        .map((idea) => ({
+          id: idea._id,
+          title: idea.title,
+          pitch: idea.description,
+          tags: idea.tags || [],
+          heat: idea.eloScore || 80,
+          builderCount: idea.builderCount || 0,
+          isPersisted: true,
+        }));
+      if (fresh.length > ideas.length - current) {
+        setIdeas(fresh);
+        setCurrent(0);
+      }
+    } catch {}
+  };
+
   const handleSwipe = async (direction) => {
     const swipedIdea = ideas[current];
     if (!swipedIdea) return;
 
     saveSwipedId(swipedIdea.id);
     setCurrent((prev) => prev + 1);
+    refillIfLow();
 
     if (direction === 'up') {
       showToast('Saved for later');
