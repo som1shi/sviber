@@ -9,6 +9,7 @@ import {
   Build, Add, LocalFireDepartment
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
+import { useLocation } from 'react-router-dom';
 
 const TABS = ['Hot', 'New', 'Building', 'Mine'];
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3001';
@@ -131,7 +132,12 @@ function IdeaCard({ idea, onUpvote, onDownvote, onToggleSave, onToggleBuild }) {
 
 export default function CommunityPage() {
   const { user } = useAuth();
-  const [tab, setTab] = useState(0);
+  const location = useLocation();
+  const tabIndexFromNav = location.state?.tabIndex;
+  const [tab, setTab] = useState(tabIndexFromNav ?? 0);
+  useEffect(() => {
+    if (tabIndexFromNav !== undefined) setTab(tabIndexFromNav);
+  }, [tabIndexFromNav]);
   const [ideas, setIdeas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');

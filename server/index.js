@@ -1,7 +1,9 @@
-require('dotenv').config();
-
 const path = require('path');
 const fs = require('fs');
+require('dotenv').config({
+  path: path.join(__dirname, '.env'),
+  override: true,
+});
 const express = require('express');
 const cors = require('cors');
 const { createServer } = require('http');

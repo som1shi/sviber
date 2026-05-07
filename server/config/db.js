@@ -6,6 +6,9 @@ async function connectDB() {
     console.warn('MONGODB_URI not set — skipping DB connection.');
     return;
   }
+  const hostMatch = String(uri).match(/@([^/?]+)/);
+  const mongoHost = hostMatch?.[1] || '(unparsed-host)';
+  console.log(`MongoDB target host: ${mongoHost}`);
   try {
     await mongoose.connect(uri);
     console.log('MongoDB connected:', mongoose.connection.host);
