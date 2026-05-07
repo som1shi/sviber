@@ -26,7 +26,7 @@ export default function ProfilePage() {
     name: profileUser?.displayName || '',
     title: profileUser?.role || 'Builder',
     school: profileUser?.school || '',
-    elo: profileUser?.elo ?? 0,
+    elo: typeof profileUser?.elo === 'number' ? profileUser.elo : 0,
     bio: profileUser?.bio || '',
     profilePic: profileUser?.avatar || '',
     githubLink: profileUser?.github || '',

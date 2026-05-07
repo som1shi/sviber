@@ -6,6 +6,7 @@ const User = require('../models/User');
 router.get('/me', async (req, res) => {
   if (!req.isAuthenticated()) return res.status(401).json({ error: 'Not logged in' });
   const user = await User.findById(req.user._id).lean();
+  if (user && typeof user.elo !== 'number') user.elo = 0;
   res.json(user);
 });
 
