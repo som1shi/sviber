@@ -52,11 +52,16 @@ Return ONLY a valid JSON array, no markdown, no explanation. Example format:
 }
 
 // POST /api/generate-ideas — generate and save a batch
+// Add ?force=true to bypass the daily seed check and run it immediately
 router.post('/', async (req, res) => {
   if (!process.env.GEMINI_API_KEY) {
     return res.status(500).json({ error: 'GEMINI_API_KEY not set' });
   }
   try {
+    if (req.query.force === 'true') {
+      res.json({ message: 'Force seed started — check server logs' });
+      return autoSeed(true);
+    }
     const count = Math.min(Number(req.query.count) || 10, 20);
     const ideas = await generateBatch(count);
 
@@ -79,19 +84,20 @@ router.post('/', async (req, res) => {
 // Runs once per day on server start.
 // Generates 10 ideas across all 10 categories = ~100 fresh ideas per day.
 // Ideas accumulate in the DB — all users share the same growing pool.
-async function autoSeed() {
+async function autoSeed(force = false) {
   if (!process.env.GEMINI_API_KEY) return;
   try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const alreadySeededToday = await Idea.exists({
-      isAiGenerated: true,
-      createdAt: { $gte: today },
-    });
-    if (alreadySeededToday) {
-      console.log('Daily idea seed already ran today — skipping.');
-      return;
+    if (!force) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const alreadySeededToday = await Idea.exists({
+        isAiGenerated: true,
+        createdAt: { $gte: today },
+      });
+      if (alreadySeededToday) {
+        console.log('Daily idea seed already ran today — skipping.');
+        return;
+      }
     }
 
     console.log('Starting daily idea seed across all categories...');
