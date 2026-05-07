@@ -35,7 +35,7 @@ app.use(session({
 }));
 
 const connectDB = require('./config/db');
-connectDB();
+connectDB().then(() => autoSeed(15)).catch(() => {});
 
 const passport = require('passport');
 require('./config/passport');
@@ -50,6 +50,8 @@ app.use('/api/projects', require('./routes/projects'));
 app.use('/api/swipe', require('./routes/swipe'));
 app.use('/api/build', require('./routes/build'));
 app.use('/api/survey', require('./routes/survey'));
+const { router: generateIdeasRouter, autoSeed } = require('./routes/generateIdeas');
+app.use('/api/generate-ideas', generateIdeasRouter);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
