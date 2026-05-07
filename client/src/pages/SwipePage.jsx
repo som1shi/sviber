@@ -222,11 +222,12 @@ export default function SwipePage() {
     try {
       await fetch(`${API}/api/generate-ideas`, { method: 'POST', credentials: 'include' });
       const swiped = getSwipedIds();
-      const res = await fetch(`${API}/api/ideas?tab=hot&limit=50`, { credentials: 'include' });
+      const res = await fetch(`${API}/api/ideas?tab=hot&limit=100`, { credentials: 'include' });
       if (!res.ok) return;
       const data = await res.json();
+      const currentIds = new Set(ideas.map(i => String(i.id)));
       const fresh = data
-        .filter((idea) => !swiped.has(String(idea._id)))
+        .filter((idea) => !swiped.has(String(idea._id)) && !currentIds.has(String(idea._id)))
         .map((idea) => ({
           id: idea._id,
           title: idea.title,
@@ -236,9 +237,8 @@ export default function SwipePage() {
           builderCount: idea.builderCount || 0,
           isPersisted: true,
         }));
-      if (fresh.length > ideas.length - current) {
-        setIdeas(fresh);
-        setCurrent(0);
+      if (fresh.length > 0) {
+        setIdeas((prev) => [...prev, ...fresh]);
       }
     } catch {}
   };

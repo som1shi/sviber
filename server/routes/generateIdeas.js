@@ -120,12 +120,13 @@ router.post('/', async (req, res) => {
 // Seeding on startup uses hardcoded ideas — no API calls, no rate limits
 async function autoSeed(minCount = 50) {
   try {
-    const count = await Idea.countDocuments();
-    if (count >= minCount) return;
+    const existing = await Idea.find({}, 'title').lean();
+    const existingTitles = new Set(existing.map((i) => i.title));
+    const toInsert = SEED_IDEAS.filter((i) => !existingTitles.has(i.title));
+    if (toInsert.length === 0) return;
 
-    console.log(`Only ${count} ideas in DB — seeding from built-in list...`);
     await Idea.insertMany(
-      SEED_IDEAS.map((idea) => ({
+      toInsert.map((idea) => ({
         title: idea.title,
         description: idea.description,
         tags: idea.tags || [],
@@ -133,7 +134,7 @@ async function autoSeed(minCount = 50) {
         isAiGenerated: true,
       }))
     );
-    console.log(`Seeded ${SEED_IDEAS.length} ideas.`);
+    console.log(`Seeded ${toInsert.length} new ideas.`);
   } catch (err) {
     console.error('autoSeed failed:', err.message);
   }
