@@ -22,10 +22,59 @@ const TAGS_MAP = {
   'devtools and infrastructure': ['DevTools', 'API'],
 };
 
+function getGeminiApiKey() {
+  return process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+}
+
+function getGeminiModelName() {
+  return process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+}
+
+function normalizeIdeas(rawIdeas) {
+  if (!Array.isArray(rawIdeas)) {
+    throw new Error('Gemini returned JSON, but it was not an array');
+  }
+
+  return rawIdeas
+    .map((idea) => ({
+      title: String(idea.title || '').trim(),
+      description: String(idea.description || '').trim(),
+      tags: Array.isArray(idea.tags) ? idea.tags.slice(0, 2).map(String) : [],
+      heat: Math.max(60, Math.min(99, Number(idea.heat) || 75)),
+    }))
+    .filter((idea) => idea.title && idea.description);
+}
+
+async function saveGeneratedIdeas(ideas) {
+  if (!ideas.length) throw new Error('No usable ideas to save');
+
+  const titles = ideas.map((idea) => idea.title);
+  const existingTitles = new Set(
+    (await Idea.find({ title: { $in: titles } }).distinct('title')).map((t) => t.toLowerCase())
+  );
+
+  const docs = ideas
+    .filter((idea) => !existingTitles.has(idea.title.toLowerCase()))
+    .map((idea) => ({
+      title: idea.title,
+      description: idea.description,
+      tags: idea.tags,
+      eloScore: idea.heat,
+      isAiGenerated: true,
+    }));
+
+  if (!docs.length) return [];
+  return Idea.insertMany(docs, { ordered: false });
+}
 
 async function generateBatch(count = 20) {
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+  const apiKey = getGeminiApiKey();
+  if (!apiKey) {
+    throw new Error('GEMINI_API_KEY not set. Add it to server/.env or your host environment.');
+  }
+
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({ model: getGeminiModelName() });
 
   const allTags = [...new Set(Object.values(TAGS_MAP).flat())];
 
@@ -46,32 +95,28 @@ Return ONLY a valid JSON array, no markdown, no explanation. Example format:
   const jsonMatch = text.match(/\[[\s\S]*\]/);
   if (!jsonMatch) throw new Error('No JSON array found in response');
 
-  return JSON.parse(jsonMatch[0]);
+  return normalizeIdeas(JSON.parse(jsonMatch[0]));
 }
 
-// POST /api/generate-ideas — generate and save a batch
+router.get('/status', (req, res) => {
+  res.json({
+    configured: Boolean(getGeminiApiKey()),
+    keyName: process.env.GEMINI_API_KEY ? 'GEMINI_API_KEY' : process.env.GOOGLE_API_KEY ? 'GOOGLE_API_KEY' : null,
+    model: getGeminiModelName(),
+  });
+});
+
+// POST /api/generate-ideas - generate and save a batch
 // Add ?force=true to bypass the daily seed check and run it immediately
 router.post('/', async (req, res) => {
-  if (!process.env.GEMINI_API_KEY) {
-    return res.status(500).json({ error: 'GEMINI_API_KEY not set' });
-  }
   try {
     if (req.query.force === 'true') {
-      res.json({ message: 'Force seed started — check server logs' });
+      res.json({ message: 'Force seed started - check server logs' });
       return autoSeed(true);
     }
     const count = Math.min(Number(req.query.count) || 10, 20);
     const ideas = await generateBatch(count);
-
-    const saved = await Idea.insertMany(
-      ideas.map((idea) => ({
-        title: idea.title,
-        description: idea.description,
-        tags: idea.tags || [],
-        eloScore: idea.heat || 75,
-        isAiGenerated: true,
-      }))
-    );
+    const saved = await saveGeneratedIdeas(ideas);
 
     res.json({ generated: saved.length, ideas: saved });
   } catch (err) {
@@ -81,31 +126,26 @@ router.post('/', async (req, res) => {
 
 // Runs once per day on server start.
 // Generates 10 ideas across all 10 categories = ~100 fresh ideas per day.
-// Ideas accumulate in the DB — all users share the same growing pool.
+// Ideas accumulate in the DB, so all users share the same growing pool.
 async function autoSeed(force = false) {
-  if (!process.env.GEMINI_API_KEY) return;
+  if (!getGeminiApiKey()) {
+    console.warn('Skipping Gemini seed: GEMINI_API_KEY not set.');
+    return;
+  }
   try {
     const count = await Idea.countDocuments();
     if (!force && count >= 50) {
-      console.log(`DB has ${count} ideas — skipping seed.`);
+      console.log(`DB has ${count} ideas - skipping seed.`);
       return;
     }
 
-    console.log(`DB has ${count} ideas — generating 20 more with Gemini...`);
+    console.log(`DB has ${count} ideas - generating 20 more with Gemini...`);
     const ideas = await generateBatch(20);
-    await Idea.insertMany(
-      ideas.map((idea) => ({
-        title: idea.title,
-        description: idea.description,
-        tags: idea.tags || [],
-        eloScore: idea.heat || 75,
-        isAiGenerated: true,
-      }))
-    );
-    console.log(`Seed complete — ${ideas.length} new ideas added. DB now has ${count + ideas.length}.`);
+    const saved = await saveGeneratedIdeas(ideas);
+    console.log(`Seed complete - ${saved.length} new ideas added. DB now has ${count + saved.length}.`);
   } catch (err) {
     console.error('autoSeed failed:', err.message);
   }
 }
 
-module.exports = { router, autoSeed };
+module.exports = { router, autoSeed, generateBatch };
