@@ -4,7 +4,7 @@ import ProfileCard from '../components/ProfileCard';
 import ActiveProjects from '../components/ActiveProjects';
 import EloBreakdown from '../components/EloBreakdown';
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const API = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 
 export default function ProfilePage() {
   const [profileUser, setProfileUser] = useState(null);

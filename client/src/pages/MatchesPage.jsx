@@ -16,7 +16,7 @@ import FavoriteIcon from '@mui/icons-material/Favorite';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import { useAuth } from '../context/AuthContext';
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const API = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 
 function userId(user) {
   return user?._id || user?.id;

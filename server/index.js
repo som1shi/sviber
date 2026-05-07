@@ -10,7 +10,7 @@ const MongoStore = require('connect-mongo');
 
 const app = express();
 const httpServer = createServer(app);
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 
 // Trust Render's proxy so secure cookies work over HTTPS
 app.set('trust proxy', 1);
@@ -35,7 +35,11 @@ app.use(session({
 }));
 
 const connectDB = require('./config/db');
-connectDB();
+connectDB().then(() => {
+  const { ensureEloSchema } = require('./lib/elo');
+  const User = require('./models/User');
+  User.distinct('_id').then((ids) => ensureEloSchema(ids)).catch(() => {});
+});
 
 const passport = require('passport');
 require('./config/passport');

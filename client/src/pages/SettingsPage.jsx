@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Box, Typography, TextField, Button, Avatar, Divider, CircularProgress } from '@mui/material';
 import { useAuth } from '../context/AuthContext';
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const API = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 
 export default function SettingsPage() {
   const { user, logout } = useAuth();
