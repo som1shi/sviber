@@ -12,7 +12,7 @@ export default function ProfilePage() {
 
   useEffect(() => {
     fetch(`${API}/api/users/me`, { credentials: 'include' })
-      .then((r) => r.json())
+      .then((r) => r.ok ? r.json() : null)
       .then((data) => {
         setProfileUser(data);
         setLoading(false);
@@ -22,13 +22,15 @@ export default function ProfilePage() {
 
   if (loading) return <CircularProgress sx={{ m: 4 }} />;
 
-  const breakdown = profileUser?.elo?.breakdown ?? {};
+  const eloField = profileUser?.elo;
+  const breakdown = (eloField && typeof eloField === 'object') ? (eloField.breakdown ?? {}) : {};
+  const eloTotal = (eloField && typeof eloField === 'object') ? (eloField.total ?? 1000) : 1000;
 
   const user = {
     name: profileUser?.displayName || '',
     title: profileUser?.role || 'Builder',
     school: profileUser?.school || '',
-    elo: profileUser?.elo?.total ?? 1000,
+    elo: Number(eloTotal) || 1000,
     bio: profileUser?.bio || '',
     profilePic: profileUser?.avatar || '',
     githubLink: profileUser?.github || '',
