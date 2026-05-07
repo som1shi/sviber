@@ -2,27 +2,41 @@ const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
 const { recalcElo, ensureEloSchema, onSwipe } = require('../lib/elo');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-const SIGNALS = [
-  { pattern: /launched|shipped|live users|active users|production/i,       points: 50, reason: 'Launched a product with real users' },
-  { pattern: /co-?founder|founded|started a (company|startup)/i,           points: 40, reason: 'Founded or co-founded a startup' },
-  { pattern: /y combinator|yc (s|w)\d{2}|techstars|a16z|sequoia/i,        points: 60, reason: 'Top accelerator / investor' },
-  { pattern: /(\d[\d,]+)\s*stars|popular open.?source/i,                   points: 30, reason: 'Significant open source project' },
-  { pattern: /internship|intern at|software engineer intern/i,              points: 20, reason: 'Relevant internship experience' },
-  { pattern: /hackathon.*win|won.*hackathon|1st place.*hack|hack.*1st/i,   points: 15, reason: 'Hackathon win' },
-  { pattern: /github\.com\/\w+|open.?source contributor|\d+ contributions/i, points: 10, reason: 'Active GitHub presence' },
-];
+async function scoreResume(text) {
+  const apiKey = process.env.GEMINI_URI;
+  if (!apiKey) throw new Error('GEMINI_URI not set');
 
-function scoreResume(text) {
-  const reasons = [];
-  let total = 0;
-  for (const signal of SIGNALS) {
-    if (signal.pattern.test(text)) {
-      total += signal.points;
-      reasons.push(signal.reason);
-    }
-  }
-  return { score: Math.min(200, total), reasons };
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+
+  const prompt = `You are evaluating a founder resume to assign a starting bonus score (0–200) for a co-founder matching app.
+
+Score based on these signals:
+- Launched a product with real/live users: up to 50 pts
+- Co-founded or founded a startup: up to 40 pts
+- Top accelerator or investor (YC, Techstars, a16z, Sequoia): up to 60 pts
+- Significant open source project (many stars): up to 30 pts
+- Relevant internship experience: up to 20 pts
+- Hackathon win: up to 15 pts
+- Active GitHub / open source contributions: up to 10 pts
+
+Resume:
+"""
+${text.slice(0, 3000)}
+"""
+
+Reply with JSON only, no markdown:
+{"score": <number 0-200>, "reasons": ["reason1", "reason2"]}`;
+
+  const result = await model.generateContent(prompt);
+  const raw = result.response.text().trim().replace(/^```json\n?|```$/g, '');
+  const parsed = JSON.parse(raw);
+  return {
+    score: Math.min(200, Math.max(0, Math.round(parsed.score))),
+    reasons: Array.isArray(parsed.reasons) ? parsed.reasons : [],
+  };
 }
 
 router.get('/me', async (req, res) => {
