@@ -1,15 +1,91 @@
 const express = require('express');
 const router = express.Router();
 const Project = require('../models/Project');
+const Idea = require('../models/Idea');
 const { ensureAuthenticated } = require('../middleware/auth');
 
 router.get('/', ensureAuthenticated, async (req, res) => {
   try {
     const projects = await Project.find({ 'contributors.user': req.user._id })
-      .populate('idea', 'title description tags')
-      .populate('contributors.user', 'name profilePic')
+      .populate('idea', 'title description tags projectUrl imageUrl imageUpload')
+      .populate('contributors.user', 'name profilePic elo.total')
       .sort({ updatedAt: -1 });
     res.json(projects);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Create a draft project from a user upload form.
+router.post('/draft', ensureAuthenticated, async (req, res) => {
+  try {
+    const {
+      title,
+      description,
+      tags,
+      projectUrl,
+      imageUpload,
+      imageUrl,
+    } = req.body;
+
+    if (!title) return res.status(400).json({ error: 'title required' });
+
+    const normalizedTags = Array.isArray(tags)
+      ? tags
+      : String(tags || '')
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean);
+
+    const project = await Project.create({
+      name: String(title).trim(),
+      description: description ? String(description).trim() : '',
+      tags: normalizedTags,
+      projectUrl: projectUrl ? String(projectUrl).trim() : '',
+      imageUpload: imageUpload || undefined,
+      imageUrl: imageUrl ? String(imageUrl).trim() : '',
+      contributors: [{ user: req.user._id }],
+      publishedToCommunity: false,
+    });
+
+    res.status(201).json(project);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Publish a draft project to Community (creates/links an Idea post).
+router.post('/:id/publish', ensureAuthenticated, async (req, res) => {
+  try {
+    const project = await Project.findOne({
+      _id: req.params.id,
+      'contributors.user': req.user._id,
+    });
+
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    if (project.idea) {
+      project.publishedToCommunity = true;
+      await project.save();
+      const already = await Idea.findById(project.idea);
+      return res.json(already);
+    }
+
+    const idea = await Idea.create({
+      founder: req.user._id,
+      title: project.name,
+      description: project.description || '',
+      tags: project.tags || [],
+      projectUrl: project.projectUrl || '',
+      imageUpload: project.imageUpload || undefined,
+      imageUrl: project.imageUrl || '',
+      // status defaults to 'open' and will show up in Community hot feed.
+    });
+
+    project.idea = idea._id;
+    project.publishedToCommunity = true;
+    await project.save();
+
+    res.status(201).json(idea);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -26,6 +102,7 @@ router.post('/', ensureAuthenticated, async (req, res) => {
       match: matchId,
       name,
       description,
+      publishedToCommunity: true,
       contributors: [{ user: req.user._id }],
     });
     res.status(201).json(project);
