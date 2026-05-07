@@ -90,9 +90,11 @@ async function recalcElo(userId, event = 'update') {
   const total = computeTotal(breakdown, startingBonus, lastActive);
   const historyEntry = { total, date: new Date(), event };
   await User.findByIdAndUpdate(userId, {
-    'elo.breakdown':  breakdown,
-    'elo.total':      total,
-    'elo.lastActive': new Date(),
+    $set: {
+      'elo.breakdown':  breakdown,
+      'elo.total':      total,
+      'elo.lastActive': new Date(),
+    },
     $push: { 'elo.history': { $each: [historyEntry], $slice: -50 } },
   });
   return total;

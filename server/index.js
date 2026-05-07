@@ -56,10 +56,32 @@ app.use(session({
 }));
 
 const connectDB = require('./config/db');
-connectDB().then(() => {
+connectDB().then(async () => {
   const { ensureEloSchema } = require('./lib/elo');
   const User = require('./models/User');
   User.distinct('_id').then((ids) => ensureEloSchema(ids)).catch(() => {});
+
+  // Seed starter ideas so users can swipe and match without needing to post ideas first
+  const Idea = require('./models/Idea');
+  const mongoose = require('mongoose');
+  const SYSTEM_FOUNDER = new mongoose.Types.ObjectId('000000000000000000000001');
+  const count = await Idea.countDocuments({ founder: SYSTEM_FOUNDER });
+  if (count === 0) {
+    const seeds = [
+      { title: 'AI meeting notes that actually ship actions', description: 'Listens to standups, auto-creates tasks in Linear, and pings ghosting teammates.', tags: ['AI', 'B2B'] },
+      { title: 'Stripe for creator payouts', description: 'One API to split revenue between creators, platforms, and collaborators. No spreadsheet hell.', tags: ['Fintech', 'API'] },
+      { title: 'Cursor but for design', description: 'AI pair designer in Figma. Suggests components, catches inconsistencies, writes design tokens.', tags: ['Design', 'AI'] },
+      { title: 'YC application co-pilot', description: 'Trained on every funded YC application. Tells you exactly what to fix before you submit.', tags: ['AI', 'Founders'] },
+      { title: 'Ramp for college students', description: 'Corporate card and spend tracking built for student orgs and hackathon clubs. Auto-reconciles reimbursements.', tags: ['Fintech', 'EdTech'] },
+      { title: 'Background check for freelancers', description: 'Instant trust score for contractors — GitHub activity, past client reviews, on-time delivery rate.', tags: ['B2B', 'Marketplace'] },
+      { title: 'Vercel for mobile apps', description: 'Push to deploy React Native. Preview links for every PR. No Xcode, no TestFlight drama.', tags: ['DevTools', 'Mobile'] },
+      { title: 'OpenTable but for study rooms', description: 'Book library pods, café corners, and campus quiet zones in one app. Waitlist notifications when a spot opens.', tags: ['EdTech', 'Consumer'] },
+      { title: 'Duolingo for system design', description: 'Daily bite-sized system design challenges with spaced repetition. Built for new grads prepping for FAANG.', tags: ['EdTech', 'AI'] },
+      { title: 'Equity calculator for early hires', description: 'Enter your offer, the company stage, and dilution assumptions — get a plain-English breakdown of what your options are actually worth.', tags: ['Fintech', 'Founders'] },
+    ];
+    await Idea.insertMany(seeds.map((s) => ({ ...s, founder: SYSTEM_FOUNDER, status: 'open', eloScore: 80 })));
+    console.log('[seed] inserted', seeds.length, 'starter ideas');
+  }
 });
 
 const passport = require('passport');
