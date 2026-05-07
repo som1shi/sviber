@@ -1,8 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const _pdfParse = require('pdf-parse');
-const pdfParse = _pdfParse.default || _pdfParse;
+const pdfParse = require('pdf-parse');
 const mammoth = require('mammoth');
 const User = require('../models/User');
 const { recalcElo, ensureEloSchema, onSwipe } = require('../lib/elo');
