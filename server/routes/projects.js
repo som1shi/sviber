@@ -64,16 +64,27 @@ router.post('/:id/publish', ensureAuthenticated, async (req, res) => {
 
     if (!project) return res.status(404).json({ error: 'Project not found' });
     if (project.idea) {
+      // Already published; allow updating the community "post metadata"
+      const { caption, notes, feedbackRequest } = req.body || {};
       project.publishedToCommunity = true;
       await project.save();
-      const already = await Idea.findById(project.idea);
+      const already = await Idea.findOne({ _id: project.idea, founder: req.user._id });
+      if (!already) return res.status(404).json({ error: 'Idea not found' });
+      if (caption !== undefined) already.caption = String(caption || '').trim();
+      if (notes !== undefined) already.notes = String(notes || '').trim();
+      if (feedbackRequest !== undefined) already.feedbackRequest = String(feedbackRequest || '').trim();
+      await already.save();
       return res.json(already);
     }
 
+    const { caption, notes, feedbackRequest } = req.body || {};
     const idea = await Idea.create({
       founder: req.user._id,
       title: project.name,
       description: project.description || '',
+      caption: String(caption || '').trim(),
+      notes: String(notes || '').trim(),
+      feedbackRequest: String(feedbackRequest || '').trim(),
       tags: project.tags || [],
       projectUrl: project.projectUrl || '',
       imageUpload: project.imageUpload || undefined,
