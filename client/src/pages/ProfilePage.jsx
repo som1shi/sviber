@@ -4,7 +4,7 @@ import ProfileCard from '../components/ProfileCard';
 import ActiveProjects from '../components/ActiveProjects';
 import EloBreakdown from '../components/EloBreakdown';
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const API = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 
 export default function ProfilePage() {
   const [profileUser, setProfileUser] = useState(null);
@@ -12,7 +12,7 @@ export default function ProfilePage() {
 
   useEffect(() => {
     fetch(`${API}/api/users/me`, { credentials: 'include' })
-      .then((r) => r.json())
+      .then((r) => r.ok ? r.json() : null)
       .then((data) => {
         setProfileUser(data);
         setLoading(false);
@@ -22,24 +22,26 @@ export default function ProfilePage() {
 
   if (loading) return <CircularProgress sx={{ m: 4 }} />;
 
+  const eloField = profileUser?.elo;
+  const breakdown = (eloField && typeof eloField === 'object') ? (eloField.breakdown ?? {}) : {};
+  const eloTotal = (eloField && typeof eloField === 'object') ? (eloField.total ?? 1000) : 1000;
+
   const user = {
     name: profileUser?.displayName || '',
     title: profileUser?.role || 'Builder',
     school: profileUser?.school || '',
-    elo: profileUser?.elo ?? 0,
+    elo: Number(eloTotal) || 1000,
     bio: profileUser?.bio || '',
     profilePic: profileUser?.avatar || '',
     githubLink: profileUser?.github || '',
   };
 
-  // Empty until real projects are wired up
   const projects = [];
 
-  // ELO bars — all green at 0 until real data comes in
   const eloStats = [
-    { label: 'Responsiveness', value: 0, color: '#10b981' },
-    { label: 'Ship Speed',     value: 0, color: '#10b981' },
-    { label: 'Collaboration',  value: 0, color: '#10b981' },
+    { label: 'Reliability',  value: breakdown.reliability ?? 50, color: '#10b981' },
+    { label: 'Quality',      value: breakdown.quality     ?? 50, color: '#7C5CFC' },
+    { label: 'Activity',     value: breakdown.activity    ?? 50, color: '#f59e0b' },
   ];
 
   return (
