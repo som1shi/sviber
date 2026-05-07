@@ -547,6 +547,67 @@ function canStartChat(match) {
   return Boolean(match?._id && match?.idea && match?.users?.length === 2);
 }
 
+function ProfileModal({ user: u, onClose }) {
+  if (!u) return null;
+  const name = u.displayName || u.name || u.initials || 'Unknown';
+  const role = u.role || u.title || 'Builder';
+  const school = u.school || '';
+  const bio = u.bio || '';
+  const github = u.github || u.githubLink || '';
+  const avatar = u.avatar || u.profilePic || '';
+  const eloVal = typeof u.elo === 'object' ? (u.elo?.total ?? 1000) : (Number(u.elo) || 1000);
+  const skills = Array.isArray(u.skills) ? u.skills : [];
+
+  return (
+    <Dialog open onClose={onClose} maxWidth="xs" fullWidth>
+      <DialogContent sx={{ p: 0, position: 'relative' }}>
+        <IconButton onClick={onClose} sx={{ position: 'absolute', top: 8, right: 8, zIndex: 1 }}>
+          <CloseIcon />
+        </IconButton>
+        <Box sx={{ p: 3, pt: 4 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+            <Avatar src={avatar} sx={{ width: 64, height: 64, fontSize: '1.5rem', bgcolor: PURPLE }}>
+              {name[0]}
+            </Avatar>
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>{name}</Typography>
+              <Typography sx={{ color: '#6b7280', fontSize: '0.9rem' }}>{role}</Typography>
+              {school && <Typography sx={{ color: '#9ca3af', fontSize: '0.8rem' }}>{school}</Typography>}
+            </Box>
+          </Box>
+          <Typography sx={{ fontSize: '0.85rem', fontWeight: 700, color: PURPLE, mb: 2 }}>
+            {eloVal} ELO
+          </Typography>
+          {bio && (
+            <Typography sx={{ color: '#4b5563', fontSize: '0.9rem', lineHeight: 1.6, mb: 2 }}>
+              {bio}
+            </Typography>
+          )}
+          {skills.length > 0 && (
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: 2 }}>
+              {skills.map((s) => (
+                <Chip key={s} label={s} size="small" sx={{ backgroundColor: '#f3f0ff', color: '#5b21b6', fontWeight: 500 }} />
+              ))}
+            </Box>
+          )}
+          {github && (
+            <Button
+              startIcon={<GitHubIcon />}
+              href={github.startsWith('http') ? github : `https://${github}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              size="small"
+              sx={{ color: '#1a1a1a', textTransform: 'none', p: 0 }}
+            >
+              {github}
+            </Button>
+          )}
+        </Box>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function ChatPage() {
   const { matchId } = useParams();
   const navigate = useNavigate();
@@ -557,6 +618,14 @@ export default function ChatPage() {
   const [loadingMatch, setLoadingMatch] = useState(!state?.match);
   const [chatError, setChatError] = useState('');
   const [profileModal, setProfileModal] = useState(null);
+  const [allMatches, setAllMatches] = useState([]);
+
+  useEffect(() => {
+    fetch(`${API}/api/matches`, { credentials: 'include' })
+      .then((r) => r.ok ? r.json() : [])
+      .then(setAllMatches)
+      .catch(() => {});
+  }, []);
   const bottomRef = useRef(null);
 
   const me = {
@@ -699,95 +768,85 @@ export default function ChatPage() {
     initials: getInitials(getUserName(matchUser)),
   }));
 
+  const myId = getUserId(user);
+
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: '#F2F2F2' }}>
-      <TopBar channel={channel} eloScore={match.score?.total ?? 0} users={topBarUsers} onUserClick={setProfileModal} />
+    <Box sx={{ display: 'flex', height: '100%', backgroundColor: '#F2F2F2' }}>
 
-      <Box sx={{ flex: 1, overflowY: 'auto', py: 2 }}>
-        {messages.map((msg) => {
-          if (msg.type === 'divider') return <DateDivider key={msg.id} label={msg.label} />;
-          if (msg.type === 'system-issue') return <SystemIssue key={msg.id} issueNumber={msg.issueNumber} content={msg.content} />;
-          if (msg.type === 'elo-event') return <EloEvent key={msg.id} text={msg.text} delta={msg.delta} />;
-          if (msg.type === 'ai') return <AiMessage key={msg.id} msg={msg} />;
-          if (msg.type === 'user') return <UserMessage key={msg.id} msg={msg} />;
-          return null;
-        })}
-        <div ref={bottomRef} />
-      </Box>
-
-      <MessageInput channel={channel} onSend={handleSend} />
-
-      {/* Profile modal */}
-      <Dialog open={Boolean(profileModal)} onClose={() => setProfileModal(null)} maxWidth="xs" fullWidth>
-        <DialogContent sx={{ p: 0, position: 'relative' }}>
-          <IconButton
-            onClick={() => setProfileModal(null)}
-            sx={{ position: 'absolute', top: 8, right: 8, zIndex: 1 }}
-          >
-            <CloseIcon />
-          </IconButton>
-
-          {profileModal && (() => {
-            const u = profileModal;
-            const name = u.displayName || u.name || u.initials || 'Unknown';
-            const role = u.role || u.title || 'Builder';
-            const school = u.school || '';
-            const bio = u.bio || '';
-            const github = u.github || u.githubLink || '';
-            const avatar = u.avatar || u.profilePic || '';
-            const eloVal = typeof u.elo === 'object' ? (u.elo?.total ?? 1000) : (u.elo ?? 1000);
-            const skills = Array.isArray(u.skills) ? u.skills : [];
-
+      {/* Matches sidebar */}
+      {allMatches.length > 0 && (
+        <Box sx={{
+          width: 220,
+          flexShrink: 0,
+          borderRight: '1px solid rgba(0,0,0,0.08)',
+          backgroundColor: '#EBEBEB',
+          overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
+        }}>
+          <Typography sx={{ px: 2, py: 1.5, fontSize: '0.7rem', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            Chats
+          </Typography>
+          {allMatches.map((m) => {
+            const partner = m.users?.find((u) => String(u._id) !== String(myId));
+            const partnerName = partner?.displayName || partner?.name || 'Builder';
+            const isActive = m._id === matchId;
             return (
-              <Box sx={{ p: 3, pt: 4 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                  <Avatar src={avatar} sx={{ width: 64, height: 64, fontSize: '1.5rem', bgcolor: PURPLE }}>
-                    {name[0]}
-                  </Avatar>
-                  <Box>
-                    <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>{name}</Typography>
-                    <Typography sx={{ color: '#6b7280', fontSize: '0.9rem' }}>{role}</Typography>
-                    {school && <Typography sx={{ color: '#9ca3af', fontSize: '0.8rem' }}>{school}</Typography>}
-                  </Box>
-                </Box>
-
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                  <Typography sx={{ fontSize: '0.85rem', fontWeight: 700, color: PURPLE }}>
-                    {eloVal} ELO
+              <Box
+                key={m._id}
+                onClick={() => navigate(`/app/matches/${m._id}`, { state: { match: m } })}
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1.25,
+                  px: 2,
+                  py: 1.25,
+                  cursor: 'pointer',
+                  backgroundColor: isActive ? 'rgba(124,92,252,0.1)' : 'transparent',
+                  borderLeft: isActive ? `3px solid ${PURPLE}` : '3px solid transparent',
+                  '&:hover': { backgroundColor: 'rgba(0,0,0,0.05)' },
+                }}
+              >
+                <Avatar
+                  src={partner?.avatar || partner?.profilePic}
+                  sx={{ width: 32, height: 32, fontSize: '0.75rem', bgcolor: PURPLE, flexShrink: 0 }}
+                >
+                  {partnerName[0]}
+                </Avatar>
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography sx={{ fontSize: '0.82rem', fontWeight: isActive ? 700 : 500, color: isActive ? PURPLE : '#1a1a1a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {partnerName}
+                  </Typography>
+                  <Typography sx={{ fontSize: '0.72rem', color: '#9ca3af', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {m.idea?.title || 'No idea'}
                   </Typography>
                 </Box>
-
-                {bio && (
-                  <Typography sx={{ color: '#4b5563', fontSize: '0.9rem', lineHeight: 1.6, mb: 2 }}>
-                    {bio}
-                  </Typography>
-                )}
-
-                {skills.length > 0 && (
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: 2 }}>
-                    {skills.map((s) => (
-                      <Chip key={s} label={s} size="small" sx={{ backgroundColor: '#f3f0ff', color: '#5b21b6', fontWeight: 500 }} />
-                    ))}
-                  </Box>
-                )}
-
-                {github && (
-                  <Button
-                    startIcon={<GitHubIcon />}
-                    href={github.startsWith('http') ? github : `https://${github}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    size="small"
-                    sx={{ color: '#1a1a1a', textTransform: 'none', p: 0 }}
-                  >
-                    {github}
-                  </Button>
-                )}
               </Box>
             );
-          })()}
-        </DialogContent>
-      </Dialog>
+          })}
+        </Box>
+      )}
+
+      {/* Chat area */}
+      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+        <TopBar channel={channel} eloScore={match.score?.total ?? 0} users={topBarUsers} onUserClick={setProfileModal} />
+
+        <Box sx={{ flex: 1, overflowY: 'auto', py: 2 }}>
+          {messages.map((msg) => {
+            if (msg.type === 'divider') return <DateDivider key={msg.id} label={msg.label} />;
+            if (msg.type === 'system-issue') return <SystemIssue key={msg.id} issueNumber={msg.issueNumber} content={msg.content} />;
+            if (msg.type === 'elo-event') return <EloEvent key={msg.id} text={msg.text} delta={msg.delta} />;
+            if (msg.type === 'ai') return <AiMessage key={msg.id} msg={msg} />;
+            if (msg.type === 'user') return <UserMessage key={msg.id} msg={msg} />;
+            return null;
+          })}
+          <div ref={bottomRef} />
+        </Box>
+
+        <MessageInput channel={channel} onSend={handleSend} />
+      </Box>
+
+      {profileModal && <ProfileModal user={profileModal} onClose={() => setProfileModal(null)} />}
     </Box>
   );
 }
