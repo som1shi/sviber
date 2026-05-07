@@ -1,18 +1,73 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Box,
-  Typography,
-  Avatar,
-  Button,
-  CircularProgress,
-  Alert,
-  Chip,
+  Box, Typography, Avatar, Button, CircularProgress,
+  Alert, Chip, Dialog, DialogContent, IconButton,
 } from '@mui/material';
-import { Favorite as FavoriteIcon, Chat as ChatIcon } from '@mui/icons-material';
+import { Favorite as FavoriteIcon, Chat as ChatIcon, Close as CloseIcon, GitHub as GitHubIcon } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+const PURPLE = '#7C5CFC';
+
+function PartnerModal({ partner, onClose }) {
+  if (!partner) return null;
+  const eloVal = partner.elo && typeof partner.elo === 'object' ? (partner.elo.total ?? 1000) : (Number(partner.elo) || 1000);
+  const skills = Array.isArray(partner.skills) ? partner.skills : [];
+
+  return (
+    <Dialog open onClose={onClose} maxWidth="xs" fullWidth>
+      <DialogContent sx={{ p: 0, position: 'relative' }}>
+        <IconButton onClick={onClose} sx={{ position: 'absolute', top: 8, right: 8, zIndex: 1 }}>
+          <CloseIcon />
+        </IconButton>
+        <Box sx={{ p: 3, pt: 4 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+            <Avatar src={partner.profilePic} sx={{ width: 64, height: 64, fontSize: '1.5rem', bgcolor: '#4f46e5', fontWeight: 700 }}>
+              {partner.name?.[0]}
+            </Avatar>
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>{partner.name || 'Builder'}</Typography>
+              {partner.title && <Typography sx={{ color: '#6b7280', fontSize: '0.9rem' }}>{partner.title}</Typography>}
+              {partner.school && <Typography sx={{ color: '#9ca3af', fontSize: '0.8rem' }}>{partner.school}</Typography>}
+            </Box>
+          </Box>
+
+          <Typography sx={{ fontSize: '0.85rem', fontWeight: 700, color: PURPLE, mb: partner.bio ? 1.5 : 0 }}>
+            {eloVal} ELO
+          </Typography>
+
+          {partner.bio && (
+            <Typography sx={{ color: '#4b5563', fontSize: '0.9rem', lineHeight: 1.6, mb: 1.5 }}>
+              {partner.bio}
+            </Typography>
+          )}
+
+          {skills.length > 0 && (
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: 1.5 }}>
+              {skills.map((s) => (
+                <Chip key={s} label={s} size="small" sx={{ backgroundColor: '#f3f0ff', color: '#5b21b6', fontWeight: 500 }} />
+              ))}
+            </Box>
+          )}
+
+          {partner.githubLink && (
+            <Button
+              startIcon={<GitHubIcon />}
+              href={partner.githubLink.startsWith('http') ? partner.githubLink : `https://${partner.githubLink}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              size="small"
+              sx={{ color: '#1a1a1a', textTransform: 'none', p: 0 }}
+            >
+              {partner.githubLink}
+            </Button>
+          )}
+        </Box>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 export default function MatchesPage() {
   const { user, loading: authLoading } = useAuth();
@@ -20,6 +75,7 @@ export default function MatchesPage() {
   const [matches, setMatches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [profileModal, setProfileModal] = useState(null);
 
   const myId = user?._id || user?.id;
 
@@ -54,8 +110,11 @@ export default function MatchesPage() {
     }
   };
 
-  const sortedMatches = useMemo(
-    () => [...matches].sort((a, b) => (b.score?.total ?? 0) - (a.score?.total ?? 0)),
+  // Filter out passed matches and sort by score
+  const visibleMatches = useMemo(
+    () => [...matches]
+      .filter((m) => m.status !== 'passed')
+      .sort((a, b) => (b.score?.total ?? 0) - (a.score?.total ?? 0)),
     [matches]
   );
 
@@ -69,7 +128,7 @@ export default function MatchesPage() {
 
   if (!user) {
     return (
-      <Box sx={{ p: 3 }}>
+      <Box sx={{ px: 1 }}>
         <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>Matches</Typography>
         <Alert severity="info">Sign in to see people who want to build the same ideas as you.</Alert>
       </Box>
@@ -86,7 +145,7 @@ export default function MatchesPage() {
             Chat opens only after two founders pick the same idea.
           </Typography>
         </Box>
-        {sortedMatches.length > 0 && (
+        {visibleMatches.length > 0 && (
           <Box sx={{
             display: 'flex', alignItems: 'center', gap: 1,
             px: 2, py: 0.75, borderRadius: 20,
@@ -94,7 +153,7 @@ export default function MatchesPage() {
           }}>
             <FavoriteIcon sx={{ fontSize: 16, color: '#6b7280' }} />
             <Typography sx={{ fontSize: '0.85rem', fontWeight: 600, color: '#374151' }}>
-              {sortedMatches.length} chat{sortedMatches.length !== 1 ? 's' : ''} ready
+              {visibleMatches.length} chat{visibleMatches.length !== 1 ? 's' : ''} ready
             </Typography>
           </Box>
         )}
@@ -104,7 +163,7 @@ export default function MatchesPage() {
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>{error}</Alert>
       )}
 
-      {sortedMatches.length === 0 ? (
+      {visibleMatches.length === 0 ? (
         <Box sx={{
           p: 6, textAlign: 'center',
           backgroundColor: '#fff', border: '2px dashed #e5e7eb', borderRadius: 3,
@@ -117,11 +176,10 @@ export default function MatchesPage() {
         </Box>
       ) : (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {sortedMatches.map((match) => {
+          {visibleMatches.map((match) => {
             const partner = match.users?.find((u) => String(u._id) !== String(myId));
             const idea = match.idea;
             const score = match.score?.total ?? 0;
-            const partnerName = partner?.displayName || partner?.name || 'Builder';
 
             return (
               <Box
@@ -134,19 +192,24 @@ export default function MatchesPage() {
                   overflow: 'hidden',
                 }}
               >
-                {/* Top row: partner info + score */}
+                {/* Top: partner + score */}
                 <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', p: 3, pb: 2 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                  <Box
+                    sx={{ display: 'flex', alignItems: 'center', gap: 1.5, cursor: 'pointer', '&:hover': { opacity: 0.8 } }}
+                    onClick={() => setProfileModal(partner)}
+                  >
                     <Avatar
-                      src={partner?.avatar || partner?.profilePic}
+                      src={partner?.profilePic}
                       sx={{ width: 48, height: 48, bgcolor: '#4f46e5', fontWeight: 700 }}
                     >
-                      {partnerName[0]}
+                      {partner?.name?.[0]}
                     </Avatar>
                     <Box>
-                      <Typography sx={{ fontWeight: 700, fontSize: '1.05rem' }}>{partnerName}</Typography>
+                      <Typography sx={{ fontWeight: 700, fontSize: '1.05rem' }}>
+                        {partner?.name || 'Builder'}
+                      </Typography>
                       <Typography sx={{ color: '#6b7280', fontSize: '0.85rem' }}>
-                        Both founders swiped right on the same idea.
+                        {partner?.title || 'Founder'}{partner?.school ? ` · ${partner.school}` : ''}
                       </Typography>
                     </Box>
                   </Box>
@@ -177,27 +240,16 @@ export default function MatchesPage() {
                   </Box>
                 )}
 
-                {/* Divider */}
-                <Box sx={{ height: '1px', backgroundColor: '#f3f4f6', mx: 0 }} />
+                <Box sx={{ height: '1px', backgroundColor: '#f3f4f6' }} />
 
-                {/* Bottom row: status + actions */}
+                {/* Bottom: status + actions */}
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 3, py: 2 }}>
                   <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
                     <Typography sx={{ color: '#16a34a', fontWeight: 600, fontSize: '0.9rem' }}>
                       Chat unlocked
                     </Typography>
-                    {match.status !== 'pending' && (
-                      <Chip
-                        label={match.status}
-                        size="small"
-                        sx={{
-                          height: 20,
-                          fontSize: '0.72rem',
-                          textTransform: 'capitalize',
-                          backgroundColor: match.status === 'collab' ? '#dcfce7' : '#fee2e2',
-                          color: match.status === 'collab' ? '#16a34a' : '#dc2626',
-                        }}
-                      />
+                    {match.status === 'collab' && (
+                      <Chip label="Collab" size="small" sx={{ height: 20, fontSize: '0.72rem', backgroundColor: '#dcfce7', color: '#16a34a' }} />
                     )}
                   </Box>
 
@@ -227,12 +279,8 @@ export default function MatchesPage() {
                       startIcon={<ChatIcon sx={{ fontSize: '1rem !important' }} />}
                       onClick={() => navigate(`/app/matches/${match._id}`, { state: { match } })}
                       sx={{
-                        textTransform: 'none',
-                        fontWeight: 600,
-                        fontSize: '0.9rem',
-                        backgroundColor: '#111',
-                        borderRadius: 20,
-                        px: 2.5,
+                        textTransform: 'none', fontWeight: 600, fontSize: '0.9rem',
+                        backgroundColor: '#111', borderRadius: 20, px: 2.5,
                         '&:hover': { backgroundColor: '#333' },
                       }}
                     >
@@ -245,6 +293,8 @@ export default function MatchesPage() {
           })}
         </Box>
       )}
+
+      {profileModal && <PartnerModal partner={profileModal} onClose={() => setProfileModal(null)} />}
     </Box>
   );
 }

@@ -8,7 +8,7 @@ router.get('/', ensureAuthenticated, async (req, res) => {
   try {
     const matches = await Match.find({ users: req.user._id })
       .populate('idea', 'title description tags')
-      .populate('users', 'name profilePic elo.total skills primaryRole')
+      .populate('users', 'name profilePic title school bio githubLink elo skills primaryRole')
       .sort({ createdAt: -1 });
     res.json(matches);
   } catch (err) {
@@ -20,7 +20,7 @@ router.get('/:id', ensureAuthenticated, async (req, res) => {
   try {
     const match = await Match.findOne({ _id: req.params.id, users: req.user._id })
       .populate('idea', 'title description tags')
-      .populate('users', 'name profilePic elo.total skills primaryRole');
+      .populate('users', 'name profilePic title school bio githubLink elo skills primaryRole');
     if (!match) return res.status(404).json({ error: 'Match not found' });
     res.json(match);
   } catch (err) {
