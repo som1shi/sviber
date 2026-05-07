@@ -24,7 +24,7 @@ const TAGS_MAP = {
 
 async function generateBatch(count = 10) {
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
   const category = CATEGORIES[Math.floor(Math.random() * CATEGORIES.length)];
   const tags = TAGS_MAP[category];
