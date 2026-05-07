@@ -110,7 +110,7 @@ router.post('/', ensureAuthenticated, async (req, res) => {
           });
           const populatedMatch = await Match.findById(createdMatch._id)
             .populate('idea', 'title description tags')
-            .populate('users', 'name profilePic elo.total skills primaryRole')
+            .populate('users', 'name profilePic title school bio githubLink elo skills primaryRole')
             .lean();
           matchesCreated.push(populatedMatch || createdMatch);
         } catch (createErr) {

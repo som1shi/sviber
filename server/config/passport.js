@@ -12,13 +12,24 @@ passport.use(
     async (accessToken, refreshToken, profile, done) => {
       try {
         let user = await User.findOne({ googleId: profile.id });
+        const googleName = profile.displayName;
+        const googlePic = profile.photos?.[0]?.value;
         if (!user) {
           user = await User.create({
             googleId: profile.id,
-            name: profile.displayName,
+            name: googleName,
             email: profile.emails?.[0]?.value,
-            profilePic: profile.photos?.[0]?.value,
+            profilePic: googlePic,
           });
+        } else {
+          // Always sync name/profilePic from Google so old accounts get filled in
+          const patch = {};
+          if (!user.name && googleName) patch.name = googleName;
+          if (!user.profilePic && googlePic) patch.profilePic = googlePic;
+          if (Object.keys(patch).length) {
+            await User.findByIdAndUpdate(user._id, patch);
+            Object.assign(user, patch);
+          }
         }
         return done(null, user);
       } catch (err) {
