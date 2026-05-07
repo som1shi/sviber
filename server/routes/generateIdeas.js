@@ -22,25 +22,23 @@ const TAGS_MAP = {
   'devtools and infrastructure': ['DevTools', 'API'],
 };
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function generateBatch(count = 10, category = null) {
+async function generateBatch(count = 20) {
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
   const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
-  const cat = category || CATEGORIES[Math.floor(Math.random() * CATEGORIES.length)];
-  const tags = TAGS_MAP[cat];
+  const allTags = [...new Set(Object.values(TAGS_MAP).flat())];
 
-  const prompt = `Generate ${count} unique, specific, and compelling startup ideas in the category: "${cat}".
+  const prompt = `Generate ${count} unique, specific, and compelling startup ideas. Spread them across these categories: ${CATEGORIES.join(', ')}.
 
 For each idea return a JSON object with:
 - title: short punchy name (max 8 words)
-- description: 1-2 sentence pitch that explains the problem and solution (max 40 words)
-- tags: array of 2 tags from this list: ${JSON.stringify(tags)}
+- description: 1-2 sentence pitch explaining the problem and solution (max 40 words)
+- tags: array of exactly 2 tags chosen from: ${JSON.stringify(allTags)}
 - heat: integer 60-99 representing market excitement
 
 Return ONLY a valid JSON array, no markdown, no explanation. Example format:
-[{"title":"...","description":"...","tags":["..."],"heat":85}]`;
+[{"title":"...","description":"...","tags":["AI","DevTools"],"heat":85}]`;
 
   const result = await model.generateContent(prompt);
   const text = result.response.text().trim();
@@ -100,32 +98,18 @@ async function autoSeed(force = false) {
       }
     }
 
-    console.log('Starting daily idea seed across all categories...');
-    let totalSeeded = 0;
-
-    for (const category of CATEGORIES) {
-      try {
-        const ideas = await generateBatch(10, category);
-        await Idea.insertMany(
-          ideas.map((idea) => ({
-            title: idea.title,
-            description: idea.description,
-            tags: idea.tags || [],
-            eloScore: idea.heat || 75,
-            isAiGenerated: true,
-          }))
-        );
-        totalSeeded += ideas.length;
-        console.log(`Seeded ${ideas.length} ideas for "${category}"`);
-        // Wait 5s between categories to stay under Gemini rate limits
-        await sleep(5000);
-      } catch (err) {
-        console.error(`Failed to seed "${category}":`, err.message);
-        await sleep(10000); // longer wait on error
-      }
-    }
-
-    console.log(`Daily seed complete — ${totalSeeded} new ideas added to the pool.`);
+    console.log('Running daily idea seed...');
+    const ideas = await generateBatch(20);
+    await Idea.insertMany(
+      ideas.map((idea) => ({
+        title: idea.title,
+        description: idea.description,
+        tags: idea.tags || [],
+        eloScore: idea.heat || 75,
+        isAiGenerated: true,
+      }))
+    );
+    console.log(`Daily seed complete — ${ideas.length} new ideas added to the pool.`);
   } catch (err) {
     console.error('autoSeed failed:', err.message);
   }
