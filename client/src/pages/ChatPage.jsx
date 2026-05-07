@@ -10,8 +10,11 @@ import {
  InputAdornment,
  Button,
  CircularProgress,
+ Dialog,
+ DialogContent,
+ Chip,
 } from '@mui/material';
-import { ArrowUpward as SendIcon } from '@mui/icons-material';
+import { ArrowUpward as SendIcon, Close as CloseIcon, GitHub as GitHubIcon } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 
 
@@ -357,7 +360,7 @@ function AiMessage({ msg }) {
 // ─── top bar ──────────────────────────────────────────────────────────────────
 
 
-function TopBar({ channel, eloScore, users = [] }) {
+function TopBar({ channel, eloScore, users = [], onUserClick }) {
  return (
    <Box
      sx={{
@@ -403,6 +406,7 @@ function TopBar({ channel, eloScore, users = [] }) {
          <Avatar
            key={user.id || user._id || index}
            src={user.avatar || user.profilePic}
+           onClick={() => onUserClick?.(user)}
            sx={{
              width: 30,
              height: 30,
@@ -410,6 +414,8 @@ function TopBar({ channel, eloScore, users = [] }) {
              fontSize: '0.68rem',
              fontWeight: 700,
              color: '#1a1a1a',
+             cursor: 'pointer',
+             '&:hover': { opacity: 0.85, transform: 'scale(1.1)', transition: 'all 0.15s' },
            }}
          >
            {user.initials}
@@ -550,6 +556,7 @@ export default function ChatPage() {
   const [messages, setMessages] = useState([]);
   const [loadingMatch, setLoadingMatch] = useState(!state?.match);
   const [chatError, setChatError] = useState('');
+  const [profileModal, setProfileModal] = useState(null);
   const bottomRef = useRef(null);
 
   const me = {
@@ -694,7 +701,7 @@ export default function ChatPage() {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: '#F2F2F2' }}>
-      <TopBar channel={channel} eloScore={match.score?.total ?? 0} users={topBarUsers} />
+      <TopBar channel={channel} eloScore={match.score?.total ?? 0} users={topBarUsers} onUserClick={setProfileModal} />
 
       <Box sx={{ flex: 1, overflowY: 'auto', py: 2 }}>
         {messages.map((msg) => {
@@ -709,6 +716,78 @@ export default function ChatPage() {
       </Box>
 
       <MessageInput channel={channel} onSend={handleSend} />
+
+      {/* Profile modal */}
+      <Dialog open={Boolean(profileModal)} onClose={() => setProfileModal(null)} maxWidth="xs" fullWidth>
+        <DialogContent sx={{ p: 0, position: 'relative' }}>
+          <IconButton
+            onClick={() => setProfileModal(null)}
+            sx={{ position: 'absolute', top: 8, right: 8, zIndex: 1 }}
+          >
+            <CloseIcon />
+          </IconButton>
+
+          {profileModal && (() => {
+            const u = profileModal;
+            const name = u.displayName || u.name || u.initials || 'Unknown';
+            const role = u.role || u.title || 'Builder';
+            const school = u.school || '';
+            const bio = u.bio || '';
+            const github = u.github || u.githubLink || '';
+            const avatar = u.avatar || u.profilePic || '';
+            const eloVal = typeof u.elo === 'object' ? (u.elo?.total ?? 1000) : (u.elo ?? 1000);
+            const skills = Array.isArray(u.skills) ? u.skills : [];
+
+            return (
+              <Box sx={{ p: 3, pt: 4 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                  <Avatar src={avatar} sx={{ width: 64, height: 64, fontSize: '1.5rem', bgcolor: PURPLE }}>
+                    {name[0]}
+                  </Avatar>
+                  <Box>
+                    <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>{name}</Typography>
+                    <Typography sx={{ color: '#6b7280', fontSize: '0.9rem' }}>{role}</Typography>
+                    {school && <Typography sx={{ color: '#9ca3af', fontSize: '0.8rem' }}>{school}</Typography>}
+                  </Box>
+                </Box>
+
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                  <Typography sx={{ fontSize: '0.85rem', fontWeight: 700, color: PURPLE }}>
+                    {eloVal} ELO
+                  </Typography>
+                </Box>
+
+                {bio && (
+                  <Typography sx={{ color: '#4b5563', fontSize: '0.9rem', lineHeight: 1.6, mb: 2 }}>
+                    {bio}
+                  </Typography>
+                )}
+
+                {skills.length > 0 && (
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: 2 }}>
+                    {skills.map((s) => (
+                      <Chip key={s} label={s} size="small" sx={{ backgroundColor: '#f3f0ff', color: '#5b21b6', fontWeight: 500 }} />
+                    ))}
+                  </Box>
+                )}
+
+                {github && (
+                  <Button
+                    startIcon={<GitHubIcon />}
+                    href={github.startsWith('http') ? github : `https://${github}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    size="small"
+                    sx={{ color: '#1a1a1a', textTransform: 'none', p: 0 }}
+                  >
+                    {github}
+                  </Button>
+                )}
+              </Box>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
     </Box>
   );
 }
