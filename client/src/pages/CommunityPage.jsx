@@ -2,31 +2,104 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Box, Typography, Tabs, Tab, Card, CardContent,
   Avatar, Chip, IconButton, Button, Divider, Dialog, DialogTitle, DialogContent,
-  DialogActions, TextField, CircularProgress, Alert
+  DialogActions, TextField, CircularProgress, Alert, MenuItem
 } from '@mui/material';
 import {
   KeyboardArrowUp, KeyboardArrowDown, Star, StarBorder,
   Build, Add, LocalFireDepartment
 } from '@mui/icons-material';
-import { useAuth } from '../context/AuthContext';
 import { useLocation } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 const TABS = ['Hot', 'New', 'Building', 'Mine'];
-const API = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+// In dev, use same-origin paths so cookies work via Vite proxy.
+const API = import.meta.env.DEV ? '' : (import.meta.env.VITE_API_URL || '');
 
-const roleColors = { Founder: '#16a34a', Builder: '#2563eb', Hacker: '#9333ea' };
+const mockIdeas = [
+  {
+    id: 1,
+    author: 'Ariel S.',
+    authorElo: 847,
+    role: 'Founder',
+    title: 'BOGO Optimizer — never pay full price again',
+    description: 'ML model that tracks every BOGO deal across 200+ grocery chains, tells you exactly when to bulk-buy Oreos. IRR on snacks: 340%.',
+    heat: 94,
+    upvotes: 312,
+    builders: 41,
+    tags: ['AI', 'Finance'],
+    saved: false,
+    building: false,
+    isNew: false,
+  },
+  {
+    id: 2,
+    author: 'Rishabh A.',
+    authorElo: 612,
+    role: 'Builder',
+    title: "LinkedIn but for your dog — PawdIn",
+    description: "Professional networking for dogs. Endorse your golden retriever for 'fetching' and 'squirrel awareness'. 500+ connections or you're a bad owner.",
+    heat: 88,
+    upvotes: 245,
+    builders: 18,
+    tags: ['Social', 'Pets'],
+    saved: true,
+    building: false,
+    isNew: false,
+  },
+  {
+    id: 3,
+    author: 'Serena H.',
+    authorElo: 390,
+    role: 'Hacker',
+    title: "Uber but for borrowing your neighbor's stuff",
+    description: "Why buy a drill you'll use once? Rent Dave's drill for $2. Dave has 47 drills. Dave has a problem. Dave needs this app.",
+    heat: 76,
+    upvotes: 189,
+    builders: 12,
+    tags: ['Marketplace', 'Sustainability'],
+    saved: false,
+    building: false,
+    isNew: false,
+  },
+  {
+    id: 4,
+    author: 'Maya K.',
+    authorElo: 455,
+    role: 'Hacker',
+    title: "AI that replies to your landlord so you don't have to",
+    description: "Trained on 10,000 passive-aggressive landlord emails. Responds politely, legally, and 40% more effectively than you would while angry.",
+    heat: 71,
+    upvotes: 156,
+    builders: 9,
+    tags: ['AI', 'Legal'],
+    saved: false,
+    building: false,
+    isNew: true,
+  },
+  {
+    id: 5,
+    author: 'Justin T.',
+    authorElo: 520,
+    role: 'Builder',
+    title: 'Yelp for your coworkers',
+    description: '1-5 stars. Leave anonymous reviews. "Greg microwaves fish daily, 1 star." Finally hold people accountable for the thing.',
+    heat: 65,
+    upvotes: 98,
+    builders: 6,
+    tags: ['Social', 'Productivity'],
+    saved: false,
+    building: false,
+    isNew: true,
+  },
+];
 
-function initials(name) {
-  return String(name || 'Founder')
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0])
-    .join('')
-    .toUpperCase();
-}
+const roleColors = {
+  Founder: '#16a34a',
+  Builder: '#2563eb',
+  Hacker: '#9333ea',
+};
 
-function IdeaCard({ idea, onUpvote, onDownvote, onToggleSave, onToggleBuild }) {
+function IdeaCard({ idea, onUpvote, onToggleSave, onToggleBuild }) {
   return (
     <Card
       elevation={0}
@@ -43,7 +116,7 @@ function IdeaCard({ idea, onUpvote, onDownvote, onToggleSave, onToggleBuild }) {
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Avatar sx={{ width: 28, height: 28, fontSize: 12, bgcolor: '#111' }}>
-              {initials(idea.author)}
+              {idea.author.split(' ').map(n => n[0]).join('')}
             </Avatar>
             <Typography sx={{ fontWeight: 600, fontSize: 13 }}>{idea.author}</Typography>
             <Typography sx={{ fontSize: 12, color: '#9ca3af' }}>{idea.authorElo}</Typography>
@@ -53,8 +126,8 @@ function IdeaCard({ idea, onUpvote, onDownvote, onToggleSave, onToggleBuild }) {
               sx={{
                 fontSize: 11,
                 height: 20,
-                bgcolor: `${roleColors[idea.role] || '#6b7280'}15`,
-                color: roleColors[idea.role] || '#6b7280',
+                bgcolor: `${roleColors[idea.role]}15`,
+                color: roleColors[idea.role],
                 fontWeight: 600,
                 border: 'none',
               }}
@@ -72,9 +145,32 @@ function IdeaCard({ idea, onUpvote, onDownvote, onToggleSave, onToggleBuild }) {
         <Typography sx={{ fontWeight: 700, fontSize: 15, mb: 0.75, lineHeight: 1.3 }}>
           {idea.title}
         </Typography>
+        {idea.caption && (
+          <Typography sx={{ fontSize: 13, color: '#374151', mb: 1.25, lineHeight: 1.5 }}>
+            {idea.caption}
+          </Typography>
+        )}
         <Typography sx={{ fontSize: 13, color: '#6b7280', mb: 2, lineHeight: 1.5 }}>
           {idea.description}
         </Typography>
+        {(idea.feedbackRequest || idea.notes) && (
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
+            {idea.feedbackRequest && (
+              <Chip
+                size="small"
+                label={`Feedback: ${idea.feedbackRequest}`}
+                sx={{ bgcolor: '#eef2ff', color: '#3730a3', border: '1px solid #e5e7eb' }}
+              />
+            )}
+            {idea.notes && (
+              <Chip
+                size="small"
+                label="Has notes"
+                sx={{ bgcolor: '#f9fafb', color: '#374151', border: '1px solid #e5e7eb' }}
+              />
+            )}
+          </Box>
+        )}
 
         <Box sx={{ display: 'flex', gap: 0.75, mb: 2, flexWrap: 'wrap' }}>
           {idea.tags.map(tag => (
@@ -97,7 +193,7 @@ function IdeaCard({ idea, onUpvote, onDownvote, onToggleSave, onToggleBuild }) {
             <Typography sx={{ fontWeight: 700, fontSize: 13, minWidth: 24, textAlign: 'center' }}>
               {idea.upvotes}
             </Typography>
-            <IconButton size="small" onClick={() => onDownvote(idea.id)} sx={{ p: 0.5 }}>
+            <IconButton size="small" sx={{ p: 0.5 }}>
               <KeyboardArrowDown sx={{ fontSize: 18 }} />
             </IconButton>
           </Box>
@@ -134,17 +230,26 @@ export default function CommunityPage() {
   const { user } = useAuth();
   const location = useLocation();
   const tabIndexFromNav = location.state?.tabIndex;
-  const [tab, setTab] = useState(tabIndexFromNav ?? 0);
+  const safeTabFromNav = Number.isInteger(tabIndexFromNav) && tabIndexFromNav >= 0 && tabIndexFromNav < TABS.length
+    ? tabIndexFromNav
+    : 0;
+  const [tab, setTab] = useState(safeTabFromNav);
   useEffect(() => {
-    if (tabIndexFromNav !== undefined) setTab(tabIndexFromNav);
+    if (Number.isInteger(tabIndexFromNav) && tabIndexFromNav >= 0 && tabIndexFromNav < TABS.length) {
+      setTab(tabIndexFromNav);
+    }
   }, [tabIndexFromNav]);
   const [ideas, setIdeas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [postOpen, setPostOpen] = useState(false);
-  const [postTitle, setPostTitle] = useState('');
-  const [postDescription, setPostDescription] = useState('');
-  const [postTags, setPostTags] = useState('');
+  const [projects, setProjects] = useState([]);
+  const [projectsLoading, setProjectsLoading] = useState(false);
+  const [projectsError, setProjectsError] = useState('');
+  const [selectedProjectId, setSelectedProjectId] = useState('');
+  const [postCaption, setPostCaption] = useState('');
+  const [postNotes, setPostNotes] = useState('');
+  const [postFeedbackRequest, setPostFeedbackRequest] = useState('');
   const [posting, setPosting] = useState(false);
   const [editIdea, setEditIdea] = useState(null);
   const [editTitle, setEditTitle] = useState('');
@@ -156,9 +261,15 @@ export default function CommunityPage() {
 
   const totalUpvotes = ideas.reduce((sum, i) => sum + i.upvotes, 0);
   const wantToBuild = ideas.reduce((sum, i) => sum + i.builders, 0);
-  const myElo = user?.elo?.total || user?.elo || 0;
+  const myElo =
+    (typeof user?.elo?.total === 'number' ? user.elo.total : undefined)
+    ?? (typeof user?.elo === 'number' ? user.elo : undefined)
+    ?? 0;
 
-  const tabName = useMemo(() => TABS[tab].toLowerCase(), [tab]);
+  const tabName = useMemo(() => {
+    const selected = Number.isInteger(tab) && tab >= 0 && tab < TABS.length ? tab : 0;
+    return TABS[selected].toLowerCase();
+  }, [tab]);
 
   const loadIdeas = async () => {
     try {
@@ -177,6 +288,9 @@ export default function CommunityPage() {
         authorElo: idea.founder?.elo?.total ?? 0,
         role: idea.founder?.title || 'Founder',
         title: idea.title,
+        caption: idea.caption || '',
+        notes: idea.notes || '',
+        feedbackRequest: idea.feedbackRequest || '',
         description: idea.description,
         heat: idea.eloScore || 0,
         upvotes: idea.upvotes || 0,
@@ -201,25 +315,27 @@ export default function CommunityPage() {
     loadIdeas();
   }, [tabName]);
 
-  const handleUpvote = (id) => {
-    fetch(`${API}/api/ideas/${id}/vote`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ value: 1 }),
-    })
-      .then(() => loadIdeas())
-      .catch(() => {});
+  const loadProjects = async () => {
+    try {
+      setProjectsError('');
+      setProjectsLoading(true);
+      const res = await fetch(`${API}/api/projects`, { credentials: 'include' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || 'Failed to load projects');
+      }
+      const data = await res.json();
+      setProjects(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setProjectsError(err.message || 'Failed to load projects');
+      setProjects([]);
+    } finally {
+      setProjectsLoading(false);
+    }
   };
-  const handleDownvote = (id) => {
-    fetch(`${API}/api/ideas/${id}/vote`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ value: -1 }),
-    })
-      .then(() => loadIdeas())
-      .catch(() => {});
+
+  const handleUpvote = (id) => {
+    setIdeas(prev => prev.map(i => i.id === id ? { ...i, upvotes: i.upvotes + 1 } : i));
   };
   const handleToggleSave = (id) => {
     setIdeas(prev => prev.map(i => i.id === id ? { ...i, saved: !i.saved } : i));
@@ -228,34 +344,41 @@ export default function CommunityPage() {
     setIdeas(prev => prev.map(i => i.id === id ? { ...i, building: !i.building, builders: i.building ? i.builders - 1 : i.builders + 1 } : i));
   };
 
-  const filteredIdeas = tabName === 'mine'
-    ? ideas
-    : tabName === 'building'
+  const filteredIdeas = tab === 3
+    ? ideas.filter(i => i.saved)
+    : tab === 2
     ? ideas.filter(i => i.building)
+    : tab === 1
+    ? [...ideas].sort((a, b) => b.id - a.id)
     : [...ideas].sort((a, b) => b.heat - a.heat);
 
   const handlePostIdea = async () => {
     try {
       setPosting(true);
       setError('');
-      const res = await fetch(`${API}/api/ideas`, {
+      if (!selectedProjectId) {
+        throw new Error('Pick a project to share');
+      }
+
+      const res = await fetch(`${API}/api/projects/${selectedProjectId}/publish`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          title: postTitle,
-          description: postDescription,
-          tags: postTags,
+          caption: postCaption,
+          notes: postNotes,
+          feedbackRequest: postFeedbackRequest,
         }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || 'Failed to post idea');
+        throw new Error(body.error || 'Failed to publish project');
       }
       setPostOpen(false);
-      setPostTitle('');
-      setPostDescription('');
-      setPostTags('');
+      setSelectedProjectId('');
+      setPostCaption('');
+      setPostNotes('');
+      setPostFeedbackRequest('');
       setTab(1);
       loadIdeas();
     } catch (err) {
@@ -326,6 +449,7 @@ export default function CommunityPage() {
     }
   };
 
+
   return (
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 3 }}>
@@ -340,7 +464,10 @@ export default function CommunityPage() {
         <Button
           variant="contained"
           startIcon={<Add />}
-          onClick={() => setPostOpen(true)}
+          onClick={() => {
+            setPostOpen(true);
+            loadProjects();
+          }}
           sx={{
             bgcolor: '#111',
             color: '#fff',
@@ -354,9 +481,7 @@ export default function CommunityPage() {
         </Button>
       </Box>
 
-      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-
-      <Box sx={{ display: 'flex', gap: 5, mb: 3 }}>
+      <Box sx={{ display: 'flex', gap: 4, mb: 3 }}>
         {[
           { label: 'total upvotes', value: totalUpvotes },
           { label: 'want to build', value: wantToBuild },
@@ -382,106 +507,50 @@ export default function CommunityPage() {
         {TABS.map(t => <Tab key={t} label={t} />)}
       </Tabs>
 
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.25, pb: 2 }}>
-        {loading && (
-          <Box sx={{ py: 8, display: 'flex', justifyContent: 'center' }}>
-            <CircularProgress />
-          </Box>
-        )}
-        {!loading && filteredIdeas.length === 0 ? (
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        {filteredIdeas.length === 0 ? (
           <Typography sx={{ color: '#9ca3af', textAlign: 'center', py: 6 }}>
             Nothing here yet.
           </Typography>
-        ) : !loading && (
+        ) : (
           filteredIdeas.map(idea => (
-            <Box key={idea.id}>
-              <IdeaCard
-                idea={idea}
-                onUpvote={handleUpvote}
-                onDownvote={handleDownvote}
-                onToggleSave={handleToggleSave}
-                onToggleBuild={handleToggleBuild}
-              />
-              {idea.imageUrl && (
-                <Box sx={{ mt: -1.5, mb: 1, px: 2 }}>
-                  <Box
-                    component="img"
-                    src={idea.imageUrl}
-                    alt={idea.title}
-                    sx={{
-                      width: '100%',
-                      maxHeight: 320,
-                      objectFit: 'cover',
-                      borderRadius: 2,
-                      border: '1px solid #e5e7eb',
-                      backgroundColor: '#f9fafb',
-                    }}
-                  />
-                </Box>
-              )}
-              {(idea.projectUrl || String(idea.founderId) === String(user?._id || user?.id)) && (
-                <Box sx={{ mt: -0.5, mb: 2.5, px: 2, display: 'flex', gap: 1 }}>
-                  {idea.projectUrl && (
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      href={idea.projectUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      sx={{ textTransform: 'none' }}
-                    >
-                      Open project
-                    </Button>
-                  )}
-                  {String(idea.founderId) === String(user?._id || user?.id) && (
-                    <Button
-                      size="small"
-                      variant="text"
-                      onClick={() => openEdit(idea)}
-                      sx={{ textTransform: 'none' }}
-                    >
-                      Edit post
-                    </Button>
-                  )}
-                </Box>
-              )}
-            </Box>
+            <IdeaCard
+              key={idea.id}
+              idea={idea}
+              onUpvote={handleUpvote}
+              onToggleSave={handleToggleSave}
+              onToggleBuild={handleToggleBuild}
+            />
           ))
         )}
       </Box>
 
       <Dialog open={postOpen} onClose={() => setPostOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Post an idea</DialogTitle>
+        <DialogTitle>Share a project to Community</DialogTitle>
         <DialogContent sx={{ display: 'grid', gap: 2, pt: 1 }}>
+          {projectsError && <Alert severity="error">{projectsError}</Alert>}
           <TextField
-            label="Title"
-            value={postTitle}
-            onChange={(e) => setPostTitle(e.target.value)}
+            select
+            label="Choose a project"
+            value={selectedProjectId}
+            onChange={(e) => setSelectedProjectId(e.target.value)}
             fullWidth
-          />
-          <TextField
-            label="Description"
-            value={postDescription}
-            onChange={(e) => setPostDescription(e.target.value)}
-            multiline
-            minRows={4}
-            fullWidth
-          />
-          <TextField
-            label="Tags (comma separated)"
-            value={postTags}
-            onChange={(e) => setPostTags(e.target.value)}
-            placeholder="AI, Fintech, SaaS"
-            fullWidth
-          />
+            disabled={projectsLoading}
+            helperText={projectsLoading ? 'Loading projects...' : (projects.length ? 'Pick a draft project (or published) to share.' : 'No projects yet. Create one in Projects first.')}
+          >
+            {projects.map((p) => (
+              <MenuItem key={p._id} value={p._id}>
+                {p.name}{p.publishedToCommunity || p.idea ? ' (published)' : ' (draft)'}
+              </MenuItem>
+            ))}
+          </TextField>
+          <TextField label="Caption (optional)" value={postCaption} onChange={(e) => setPostCaption(e.target.value)} fullWidth />
+          <TextField label="Notes (optional)" value={postNotes} onChange={(e) => setPostNotes(e.target.value)} multiline minRows={4} fullWidth />
+          <TextField label="Ask for feedback (optional)" value={postFeedbackRequest} onChange={(e) => setPostFeedbackRequest(e.target.value)} placeholder="Pricing, landing page copy, onboarding, etc." fullWidth />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setPostOpen(false)} disabled={posting}>Cancel</Button>
-          <Button
-            variant="contained"
-            onClick={handlePostIdea}
-            disabled={posting || !postTitle.trim() || !postDescription.trim()}
-          >
+          <Button variant="contained" onClick={handlePostIdea} disabled={posting || !selectedProjectId}>
             {posting ? 'Posting...' : 'Post'}
           </Button>
         </DialogActions>
@@ -491,24 +560,12 @@ export default function CommunityPage() {
         <DialogTitle>Edit project post</DialogTitle>
         <DialogContent sx={{ display: 'grid', gap: 2, pt: 1 }}>
           <TextField label="Title" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} fullWidth />
-          <TextField
-            label="Description"
-            value={editDescription}
-            onChange={(e) => setEditDescription(e.target.value)}
-            multiline
-            minRows={4}
-            fullWidth
-          />
+          <TextField label="Description" value={editDescription} onChange={(e) => setEditDescription(e.target.value)} multiline minRows={4} fullWidth />
           <TextField label="Tags (comma separated)" value={editTags} onChange={(e) => setEditTags(e.target.value)} fullWidth />
           <TextField label="Project URL" value={editProjectUrl} onChange={(e) => setEditProjectUrl(e.target.value)} fullWidth />
           <Button variant="outlined" component="label">
             {editImageFile ? `New image: ${editImageFile.name}` : 'Replace image (optional)'}
-            <input
-              hidden
-              type="file"
-              accept="image/*"
-              onChange={(e) => setEditImageFile(e.target.files?.[0] || null)}
-            />
+            <input hidden type="file" accept="image/*" onChange={(e) => setEditImageFile(e.target.files?.[0] || null)} />
           </Button>
         </DialogContent>
         <DialogActions>

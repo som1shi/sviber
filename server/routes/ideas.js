@@ -8,38 +8,19 @@ const { onIdeaVote } = require('../lib/elo');
 router.get('/', async (req, res) => {
   try {
     const { tab = 'hot', page = 1, limit = 20 } = req.query;
-    const skip = (Number(page) - 1) * Number(limit);
-    const userId = req.user?._id ? String(req.user._id) : null;
+    const skip = (page - 1) * limit;
 
     let sort = { eloScore: -1 };
     if (tab === 'new') sort = { createdAt: -1 };
     if (tab === 'building') sort = { builderCount: -1 };
 
-    const filter = {};
-    if (tab === 'building') filter.status = 'building';
-    if (tab === 'mine') {
-      if (!userId) return res.status(401).json({ error: 'Sign in required for mine tab' });
-      filter.founder = userId;
-    }
-    if (req.query.excludeOwn === 'true' && userId) {
-      filter.founder = { $ne: userId };
-    }
-
-    let blockedIdeaIds = [];
-    if (req.query.excludeSwiped === 'true' && userId) {
-      const Swipe = require('../models/Swipe');
-      const swipes = await Swipe.find({ user: userId }).select('idea').lean();
-      blockedIdeaIds = swipes.map((s) => s.idea);
-    }
-    if (blockedIdeaIds.length > 0) {
-      filter._id = { $nin: blockedIdeaIds };
-    }
+    const filter = tab === 'building' ? { status: 'building' } : {};
 
     const ideas = await Idea.find(filter)
       .sort(sort)
       .skip(skip)
       .limit(Number(limit))
-      .populate('founder', 'displayName avatar elo.total');
+      .populate('founder', 'name profilePic elo.total');
 
     res.json(ideas);
   } catch (err) {
@@ -49,7 +30,7 @@ router.get('/', async (req, res) => {
 
 router.post('/', ensureAuthenticated, async (req, res) => {
   try {
-    const { title, description, tags, projectUrl, imageUrl, imageUpload } = req.body;
+    const { title, description, caption, notes, feedbackRequest, tags, projectUrl, imageUrl, imageUpload } = req.body;
     if (!title || !description) return res.status(400).json({ error: 'title and description required' });
     const normalizedTags = Array.isArray(tags)
       ? tags
@@ -61,6 +42,9 @@ router.post('/', ensureAuthenticated, async (req, res) => {
       founder: req.user._id,
       title: String(title).trim(),
       description: String(description).trim(),
+      caption: String(caption || '').trim(),
+      notes: String(notes || '').trim(),
+      feedbackRequest: String(feedbackRequest || '').trim(),
       tags: normalizedTags,
       projectUrl: String(projectUrl || '').trim(),
       imageUrl: String(imageUrl || '').trim(),
@@ -77,9 +61,12 @@ router.patch('/:id', ensureAuthenticated, async (req, res) => {
     const idea = await Idea.findOne({ _id: req.params.id, founder: req.user._id });
     if (!idea) return res.status(404).json({ error: 'Idea not found' });
 
-    const { title, description, tags, projectUrl, imageUrl, imageUpload, status } = req.body;
+    const { title, description, caption, notes, feedbackRequest, tags, projectUrl, imageUrl, imageUpload, status } = req.body;
     if (title !== undefined) idea.title = String(title).trim();
     if (description !== undefined) idea.description = String(description).trim();
+    if (caption !== undefined) idea.caption = String(caption || '').trim();
+    if (notes !== undefined) idea.notes = String(notes || '').trim();
+    if (feedbackRequest !== undefined) idea.feedbackRequest = String(feedbackRequest || '').trim();
     if (tags !== undefined) {
       idea.tags = Array.isArray(tags)
         ? tags.map((t) => String(t).trim()).filter(Boolean)
@@ -101,6 +88,7 @@ router.patch('/:id', ensureAuthenticated, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 router.post('/:id/vote', ensureAuthenticated, async (req, res) => {
   try {

@@ -8,8 +8,8 @@ const { onProjectCompleted, onProjectAbandoned, onPeerRating } = require('../lib
 router.get('/', ensureAuthenticated, async (req, res) => {
   try {
     const projects = await Project.find({ 'contributors.user': req.user._id })
-      .populate('idea', 'title description tags projectUrl imageUrl imageUpload')
-      .populate('contributors.user', 'name profilePic elo.total')
+      .populate('idea', 'title description tags')
+      .populate('contributors.user', 'displayName avatar')
       .sort({ updatedAt: -1 });
     res.json(projects);
   } catch (err) {
@@ -20,14 +20,7 @@ router.get('/', ensureAuthenticated, async (req, res) => {
 // Create a draft project from a user upload form.
 router.post('/draft', ensureAuthenticated, async (req, res) => {
   try {
-    const {
-      title,
-      description,
-      tags,
-      projectUrl,
-      imageUpload,
-      imageUrl,
-    } = req.body;
+    const { title, description, tags, projectUrl, imageUpload, imageUrl } = req.body;
 
     if (!title) return res.status(400).json({ error: 'title required' });
 
@@ -65,21 +58,30 @@ router.post('/:id/publish', ensureAuthenticated, async (req, res) => {
 
     if (!project) return res.status(404).json({ error: 'Project not found' });
     if (project.idea) {
+      const { caption, notes, feedbackRequest } = req.body || {};
       project.publishedToCommunity = true;
       await project.save();
-      const already = await Idea.findById(project.idea);
+      const already = await Idea.findOne({ _id: project.idea, founder: req.user._id });
+      if (!already) return res.status(404).json({ error: 'Idea not found' });
+      if (caption !== undefined) already.caption = String(caption || '').trim();
+      if (notes !== undefined) already.notes = String(notes || '').trim();
+      if (feedbackRequest !== undefined) already.feedbackRequest = String(feedbackRequest || '').trim();
+      await already.save();
       return res.json(already);
     }
 
+    const { caption, notes, feedbackRequest } = req.body || {};
     const idea = await Idea.create({
       founder: req.user._id,
       title: project.name,
       description: project.description || '',
+      caption: String(caption || '').trim(),
+      notes: String(notes || '').trim(),
+      feedbackRequest: String(feedbackRequest || '').trim(),
       tags: project.tags || [],
       projectUrl: project.projectUrl || '',
       imageUpload: project.imageUpload || undefined,
       imageUrl: project.imageUrl || '',
-      // status defaults to 'open' and will show up in Community hot feed.
     });
 
     project.idea = idea._id;
@@ -92,6 +94,7 @@ router.post('/:id/publish', ensureAuthenticated, async (req, res) => {
   }
 });
 
+
 router.post('/', ensureAuthenticated, async (req, res) => {
   try {
     const { ideaId, matchId, name, description } = req.body;
@@ -103,7 +106,6 @@ router.post('/', ensureAuthenticated, async (req, res) => {
       match: matchId,
       name,
       description,
-      publishedToCommunity: true,
       contributors: [{ user: req.user._id }],
     });
     res.status(201).json(project);
