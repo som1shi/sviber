@@ -56,7 +56,6 @@ router.post('/', ensureAuthenticated, async (req, res) => {
     let match = null;
 
     if (direction === 'right') {
-      // Only increment builderCount if this is a new right swipe (not changing from right to right)
       if (previousSwipe?.direction !== 'right') {
         await Idea.findByIdAndUpdate(ideaId, { $inc: { builderCount: 1 } });
       }
