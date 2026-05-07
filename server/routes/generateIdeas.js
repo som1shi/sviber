@@ -85,20 +85,13 @@ router.post('/', async (req, res) => {
 async function autoSeed(force = false) {
   if (!process.env.GEMINI_API_KEY) return;
   try {
-    if (!force) {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const alreadySeededToday = await Idea.exists({
-        isAiGenerated: true,
-        createdAt: { $gte: today },
-      });
-      if (alreadySeededToday) {
-        console.log('Daily idea seed already ran today — skipping.');
-        return;
-      }
+    const count = await Idea.countDocuments();
+    if (!force && count >= 50) {
+      console.log(`DB has ${count} ideas — skipping seed.`);
+      return;
     }
 
-    console.log('Running daily idea seed...');
+    console.log(`DB has ${count} ideas — generating 20 more with Gemini...`);
     const ideas = await generateBatch(20);
     await Idea.insertMany(
       ideas.map((idea) => ({
@@ -109,7 +102,7 @@ async function autoSeed(force = false) {
         isAiGenerated: true,
       }))
     );
-    console.log(`Daily seed complete — ${ideas.length} new ideas added to the pool.`);
+    console.log(`Seed complete — ${ideas.length} new ideas added. DB now has ${count + ideas.length}.`);
   } catch (err) {
     console.error('autoSeed failed:', err.message);
   }
