@@ -15,7 +15,7 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
 
-  const [resumeText, setResumeText] = useState('');
+  const [resumeFile, setResumeFile] = useState(null);
   const [resumeBonus, setResumeBonus] = useState(null);
   const [resumeReasons, setResumeReasons] = useState([]);
   const [resumeAnalyzing, setResumeAnalyzing] = useState(false);
@@ -53,20 +53,22 @@ export default function SettingsPage() {
   };
 
   const handleResumeAnalyze = async () => {
+    if (!resumeFile) return;
     setResumeAnalyzing(true);
     setResumeError('');
     try {
+      const formData = new FormData();
+      formData.append('resume', resumeFile);
       const res = await fetch(`${API}/api/users/me/resume`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ resumeText }),
+        body: formData,
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Analysis failed');
       setResumeBonus(data.bonus);
       setResumeReasons(data.reasons || []);
-      setResumeText('');
+      setResumeFile(null);
       setShowResumeInput(false);
     } catch (err) {
       setResumeError(err.message);
@@ -147,7 +149,7 @@ export default function SettingsPage() {
             <Typography sx={{ fontSize: '0.8rem', color: '#6b7280', mt: 0.25 }}>
               {resumeBonus > 0
                 ? `+${resumeBonus} ELO bonus earned`
-                : 'Paste your resume to earn a starting ELO bonus.'}
+                : 'Upload your resume to earn a starting ELO bonus.'}
             </Typography>
           </Box>
           <Button
@@ -181,32 +183,38 @@ export default function SettingsPage() {
 
         {showResumeInput && (
           <Box sx={{ mt: 2 }}>
-            <TextField
-              fullWidth
-              multiline
-              rows={6}
-              placeholder="Paste your resume text here..."
-              value={resumeText}
-              onChange={(e) => setResumeText(e.target.value)}
-              sx={{ mb: 1.5 }}
-            />
+            <Button
+              component="label"
+              variant="outlined"
+              sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600, borderColor: '#d1d5db', color: '#374151', mb: 1.5 }}
+            >
+              {resumeFile ? resumeFile.name : 'Choose PDF or DOCX'}
+              <input
+                type="file"
+                accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                hidden
+                onChange={(e) => { setResumeFile(e.target.files[0] || null); setResumeError(''); }}
+              />
+            </Button>
             {resumeError && (
               <Typography sx={{ color: 'red', fontSize: '0.8rem', mb: 1 }}>{resumeError}</Typography>
             )}
-            <Button
-              variant="contained"
-              onClick={handleResumeAnalyze}
-              disabled={resumeAnalyzing || resumeText.trim().length < 50}
-              sx={{
-                backgroundColor: '#7C5CFC',
-                borderRadius: 2,
-                textTransform: 'none',
-                fontWeight: 600,
-                '&:hover': { backgroundColor: '#6a4de0' },
-              }}
-            >
-              {resumeAnalyzing ? 'Analyzing...' : 'Analyze resume'}
-            </Button>
+            <Box>
+              <Button
+                variant="contained"
+                onClick={handleResumeAnalyze}
+                disabled={resumeAnalyzing || !resumeFile}
+                sx={{
+                  backgroundColor: '#7C5CFC',
+                  borderRadius: 2,
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  '&:hover': { backgroundColor: '#6a4de0' },
+                }}
+              >
+                {resumeAnalyzing ? 'Analyzing...' : 'Analyze resume'}
+              </Button>
+            </Box>
           </Box>
         )}
       </Box>

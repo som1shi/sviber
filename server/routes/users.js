@@ -1,8 +1,25 @@
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
+const pdfParse = require('pdf-parse');
+const mammoth = require('mammoth');
 const User = require('../models/User');
 const { recalcElo, ensureEloSchema, onSwipe } = require('../lib/elo');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+
+async function extractText(buffer, mimetype) {
+  if (mimetype === 'application/pdf') {
+    const data = await pdfParse(buffer);
+    return data.text;
+  }
+  if (mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+    const { value } = await mammoth.extractRawText({ buffer });
+    return value;
+  }
+  return buffer.toString('utf8');
+}
 
 async function scoreResume(text) {
   const apiKey = process.env.GEMINI_URI;
@@ -69,16 +86,19 @@ router.post('/me/elo/recalc', async (req, res) => {
   }
 });
 
-// POST /api/users/me/resume — keyword-score resume text and set starting elo bonus
-router.post('/me/resume', async (req, res) => {
+// POST /api/users/me/resume — upload PDF/DOCX resume, score with Gemini, set starting elo bonus
+router.post('/me/resume', (req, res, next) => {
   if (!req.isAuthenticated()) return res.status(401).json({ error: 'Not logged in' });
-  const { resumeText } = req.body;
-  if (!resumeText || typeof resumeText !== 'string' || resumeText.trim().length < 50) {
-    return res.status(400).json({ error: 'resumeText must be at least 50 characters' });
-  }
+  next();
+}, upload.single('resume'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
   try {
-    const { score, reasons } = scoreResume(resumeText);
+    const text = await extractText(req.file.buffer, req.file.mimetype);
+    if (!text || text.trim().length < 50) {
+      return res.status(400).json({ error: 'Could not extract enough text from file' });
+    }
+    const { score, reasons } = await scoreResume(text);
     await ensureEloSchema(req.user._id);
     await User.findByIdAndUpdate(req.user._id, { 'elo.startingBonus': score });
     const newTotal = await recalcElo(req.user._id);
