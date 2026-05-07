@@ -5,7 +5,7 @@ const pdfParse = require('pdf-parse');
 const mammoth = require('mammoth');
 const User = require('../models/User');
 const { recalcElo, ensureEloSchema, onSwipe } = require('../lib/elo');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const Groq = require('groq-sdk');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
@@ -22,11 +22,10 @@ async function extractText(buffer, mimetype) {
 }
 
 async function scoreResume(text) {
-  const apiKey = process.env.GEMINI_URI;
-  if (!apiKey) throw new Error('GEMINI_URI not set');
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) throw new Error('GROQ_API_KEY not set');
 
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-preview-04-17' });
+  const groq = new Groq({ apiKey });
 
   const prompt = `You are evaluating a founder resume to assign a starting bonus score (0–200) for a co-founder matching app.
 
@@ -47,9 +46,13 @@ ${text.slice(0, 3000)}
 Reply with JSON only, no markdown:
 {"score": <number 0-200>, "reasons": ["reason1", "reason2"]}`;
 
-  const result = await model.generateContent(prompt);
-  const raw = result.response.text().trim().replace(/^```json\n?|```$/g, '');
-  const parsed = JSON.parse(raw);
+  const completion = await groq.chat.completions.create({
+    model: 'llama-3.3-70b-versatile',
+    messages: [{ role: 'user', content: prompt }],
+    response_format: { type: 'json_object' },
+  });
+
+  const parsed = JSON.parse(completion.choices[0].message.content);
   return {
     score: Math.min(200, Math.max(0, Math.round(parsed.score))),
     reasons: Array.isArray(parsed.reasons) ? parsed.reasons : [],
