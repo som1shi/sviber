@@ -80,6 +80,7 @@ app.use('/api/build', require('./routes/build'));
 app.use('/api/survey', require('./routes/survey'));
 app.use('/api/resume', require('./routes/resume'));
 app.use('/api/generate-ideas', generateIdeasRouter);
+app.use('/api/messages', require('./routes/messages'));
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

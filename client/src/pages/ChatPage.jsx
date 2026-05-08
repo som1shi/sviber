@@ -700,31 +700,43 @@ export default function ChatPage() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Join the match room and load history
+  // Load history via HTTP — reliable across refreshes and re-navigation
+  useEffect(() => {
+    if (!canStartChat(match) || !user) return;
+    let ignore = false;
+
+    const myId = getUserId(user);
+    fetch(`${API}/api/messages/${match._id}`, { credentials: 'include' })
+      .then((r) => r.ok ? r.json() : [])
+      .then((history) => {
+        if (ignore) return;
+        const loaded = history.map((m) => ({
+          id: m._id,
+          type: 'user',
+          sender: m.senderInitials,
+          senderColor: m.senderColor,
+          senderInitials: m.senderInitials,
+          time: new Date(m.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+          alignRight: m.senderId === myId,
+          content: m.content,
+          highlights: [],
+        }));
+        setMessages(loaded);
+      })
+      .catch(() => {});
+
+    return () => { ignore = true; };
+  }, [match?._id, user]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Join socket room for real-time new messages only
   useEffect(() => {
     if (!canStartChat(match)) return;
 
-    socket.emit('join-room', match._id, ({ history = [], error }) => {
-      if (error) {
-        setChatError(error);
-        return;
-      }
-
-      const loaded = history.map((m) => ({
-        id: m._id,
-        type: 'user',
-        sender: m.senderInitials,
-        senderColor: m.senderColor,
-        senderInitials: m.senderInitials,
-        time: new Date(m.time || m.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-        alignRight: m.senderId === me.id,
-        content: m.content,
-        highlights: [],
-      }));
-      setMessages(loaded);
+    socket.emit('join-room', match._id, ({ error }) => {
+      if (error) setChatError(error);
     });
 
-    // Listen for incoming messages
+    const myId = getUserId(user);
     const handleIncoming = (msg) => {
       setMessages((prev) => [
         ...prev,
@@ -735,7 +747,7 @@ export default function ChatPage() {
           senderColor: msg.senderColor,
           senderInitials: msg.senderInitials,
           time: new Date(msg.time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-          alignRight: false,
+          alignRight: msg.senderId === myId,
           content: msg.content,
           highlights: [],
         },
@@ -744,7 +756,7 @@ export default function ChatPage() {
 
     socket.on('chat-message', handleIncoming);
     return () => socket.off('chat-message', handleIncoming);
-  }, [match, me.id]);
+  }, [match?._id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSend = useCallback((text) => {
     if (!canStartChat(match)) return;
