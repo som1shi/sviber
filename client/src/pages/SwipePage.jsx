@@ -215,7 +215,7 @@ export default function SwipePage() {
       setLoading(true);
       const swiped = getSwipedIds();
       try {
-        const res = await fetch(`${API}/api/ideas?tab=hot&limit=50`, { credentials: 'include' });
+        const res = await fetch(`${API}/api/swipe/feed?limit=50`, { credentials: 'include' });
         if (res.ok) {
           const data = await res.json();
           if (Array.isArray(data) && data.length > 0) {
@@ -305,10 +305,11 @@ export default function SwipePage() {
       });
       if (!res.ok) return;
       const data = await res.json();
-      if (direction === 'right' && data.match?._id) {
-        const partner = data.match.users?.find(u => String(u._id) !== String(user?._id));
-        showToast(`Matched with ${partner?.displayName || 'a founder'}! Opening chat...`);
-        setTimeout(() => navigate(`/app/matches/${data.match._id}`, { state: { match: data.match } }), 1500);
+      const firstMatch = data.match || data.matches?.[0];
+      if (firstMatch?._id) {
+        const partner = firstMatch.users?.find(u => String(u._id) !== String(user?._id));
+        showToast(`Matched with ${partner?.displayName || partner?.name || 'a founder'}! Opening chat...`);
+        setTimeout(() => navigate(`/app/matches/${firstMatch._id}`, { state: { match: firstMatch } }), 1500);
       }
     } catch {
       // Swipe persistence failure should not block local deck progress.

@@ -2,7 +2,8 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 
 const AuthContext = createContext(null);
-const API = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+// In dev, use same-origin paths so cookies work via Vite proxy.
+const API = import.meta.env.DEV ? '' : (import.meta.env.VITE_API_URL || '');
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);

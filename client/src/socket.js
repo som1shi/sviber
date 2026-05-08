@@ -1,9 +1,11 @@
 import { io } from 'socket.io-client';
 
-const socket = io(import.meta.env.VITE_API_URL || 'http://localhost:3001', {
+const URL = import.meta.env.VITE_API_URL || undefined;
+
+const socket = io(URL, {
+  path: '/socket.io',
   autoConnect: true,
-  ackTimeout: 10000,
-  retries: 3,
+  withCredentials: true,
 });
 
 export default socket;

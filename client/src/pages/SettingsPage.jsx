@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Box, Typography, TextField, Button, Avatar, Divider, CircularProgress } from '@mui/material';
 import { useAuth } from '../context/AuthContext';
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const API = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 
 export default function SettingsPage() {
   const { user, logout } = useAuth();
@@ -14,6 +14,13 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
+
+  const [resumeFile, setResumeFile] = useState(null);
+  const [resumeBonus, setResumeBonus] = useState(null);
+  const [resumeReasons, setResumeReasons] = useState([]);
+  const [resumeAnalyzing, setResumeAnalyzing] = useState(false);
+  const [resumeError, setResumeError] = useState('');
+  const [showResumeInput, setShowResumeInput] = useState(false);
 
   useEffect(() => {
     fetch(`${API}/api/survey`, { credentials: 'include' })
@@ -33,6 +40,9 @@ export default function SettingsPage() {
           bio:         data.bio || '',
           github:      data.github || '',
         });
+        if (data.elo?.startingBonus > 0) {
+          setResumeBonus(data.elo.startingBonus);
+        }
         setLoading(false);
       });
   }, []);
@@ -40,6 +50,30 @@ export default function SettingsPage() {
   const handleChange = (e) => {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
     setSaved(false);
+  };
+
+  const handleResumeAnalyze = async () => {
+    if (!resumeFile) return;
+    setResumeAnalyzing(true);
+    setResumeError('');
+    try {
+      const formData = new FormData();
+      formData.append('resume', resumeFile);
+      const res = await fetch(`${API}/api/users/me/resume`, {
+        method: 'POST',
+        credentials: 'include',
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Analysis failed');
+      setResumeBonus(data.bonus);
+      setResumeReasons(data.reasons || []);
+      setResumeFile(null);
+      setShowResumeInput(false);
+    } catch (err) {
+      setResumeError(err.message);
+    }
+    setResumeAnalyzing(false);
   };
 
   const handleSave = async () => {
@@ -106,6 +140,84 @@ export default function SettingsPage() {
           </Button>
         </Box>
       )}
+
+      {/* Resume ELO section */}
+      <Box sx={{ mb: 4, p: 2, borderRadius: 2, border: '1px solid #e5e7eb', backgroundColor: '#fafafa' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Box>
+            <Typography sx={{ fontWeight: 600, fontSize: '0.9rem' }}>Resume</Typography>
+            <Typography sx={{ fontSize: '0.8rem', color: '#6b7280', mt: 0.25 }}>
+              {resumeBonus > 0
+                ? `+${resumeBonus} ELO bonus earned`
+                : 'Upload your resume to earn a starting ELO bonus.'}
+            </Typography>
+          </Box>
+          <Button
+            size="small"
+            variant={resumeBonus > 0 ? 'outlined' : 'contained'}
+            onClick={() => setShowResumeInput((v) => !v)}
+            sx={{
+              borderRadius: 2,
+              textTransform: 'none',
+              fontWeight: 600,
+              ml: 2,
+              whiteSpace: 'nowrap',
+              ...(resumeBonus > 0
+                ? { borderColor: '#d1d5db', color: '#6b7280' }
+                : { backgroundColor: '#7C5CFC', '&:hover': { backgroundColor: '#6a4de0' } }),
+            }}
+          >
+            {resumeBonus > 0 ? 'Re-analyze' : 'Add resume →'}
+          </Button>
+        </Box>
+
+        {resumeBonus > 0 && resumeReasons.length > 0 && (
+          <Box sx={{ mt: 1.5, display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+            {resumeReasons.map((r, i) => (
+              <Box key={i} sx={{ px: 1.25, py: 0.4, borderRadius: 10, backgroundColor: '#f3f0ff', border: '1px solid #ddd6fe' }}>
+                <Typography sx={{ fontSize: '0.75rem', color: '#5b21b6' }}>{r}</Typography>
+              </Box>
+            ))}
+          </Box>
+        )}
+
+        {showResumeInput && (
+          <Box sx={{ mt: 2 }}>
+            <Button
+              component="label"
+              variant="outlined"
+              sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600, borderColor: '#d1d5db', color: '#374151', mb: 1.5 }}
+            >
+              {resumeFile ? resumeFile.name : 'Choose PDF or DOCX'}
+              <input
+                type="file"
+                accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                hidden
+                onChange={(e) => { setResumeFile(e.target.files[0] || null); setResumeError(''); }}
+              />
+            </Button>
+            {resumeError && (
+              <Typography sx={{ color: 'red', fontSize: '0.8rem', mb: 1 }}>{resumeError}</Typography>
+            )}
+            <Box>
+              <Button
+                variant="contained"
+                onClick={handleResumeAnalyze}
+                disabled={resumeAnalyzing || !resumeFile}
+                sx={{
+                  backgroundColor: '#7C5CFC',
+                  borderRadius: 2,
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  '&:hover': { backgroundColor: '#6a4de0' },
+                }}
+              >
+                {resumeAnalyzing ? 'Analyzing...' : 'Analyze resume'}
+              </Button>
+            </Box>
+          </Box>
+        )}
+      </Box>
 
       {/* Avatar */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 4 }}>
