@@ -1,4 +1,5 @@
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Drawer,
   List,
@@ -36,6 +37,73 @@ const ACTIVE   = '#FFFFFF';
 export default function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
+  const API = import.meta.env.DEV ? '' : (import.meta.env.VITE_API_URL || '');
+  const [projects, setProjects] = useState([]);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch(`${API}/api/projects`, { credentials: 'include' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (alive) setProjects(Array.isArray(data) ? data : []);
+      } catch {
+        // Keep sidebar resilient if projects request fails.
+      }
+    })();
+    return () => { alive = false; };
+  }, [API]);
+
+  const buildProgress = useMemo(() => {
+    if (!projects.length) return 0;
+
+    const projectScores = projects.map((p) => {
+      let score = 0;
+      const tasks = Array.isArray(p.tasks) ? p.tasks : [];
+      const doneTasks = tasks.filter((t) => t?.status === 'done').length;
+      const taskRatio = tasks.length ? (doneTasks / tasks.length) : 0;
+      const contributors = Array.isArray(p.contributors) ? p.contributors.length : 0;
+      const daysSinceUpdate = Math.max(0, (Date.now() - new Date(p.updatedAt || Date.now()).getTime()) / (1000 * 60 * 60 * 24));
+      const planning = p.planning || {};
+      const planningFields = [
+        planning.problem,
+        planning.targetUser,
+        planning.mvpScope,
+        planning.successMetric,
+        planning.launchGoal,
+        planning.risks,
+      ].filter((x) => String(x || '').trim()).length;
+
+      // Project setup completeness.
+      if (String(p.name || '').trim()) score += 8;
+      if (String(p.description || '').trim()) score += 10;
+      if ((p.tags || []).length) score += 8;
+      if (String(p.projectUrl || '').trim()) score += 8;
+      if (String(p.imageUrl || '').trim()) score += 8;
+      score += Math.round((planningFields / 6) * 14);
+      score += Math.min(8, ((planning.checklistDone || []).length || 0) * 1.5);
+
+      // Workflow signals.
+      if (p.publishedToCommunity || p.idea) score += 12;
+      if (contributors > 1) score += 12;
+      score += Math.round(taskRatio * 24);
+
+      // Status & recency signals.
+      if (p.status === 'completed') score += 10;
+      else if (p.status === 'active') score += 6;
+      else if (p.status === 'paused') score += 3;
+
+      if (daysSinceUpdate <= 7) score += 10;
+      else if (daysSinceUpdate <= 30) score += 6;
+      else if (daysSinceUpdate <= 60) score += 2;
+
+      return Math.min(100, Math.max(0, score));
+    });
+
+    const avg = projectScores.reduce((sum, s) => sum + s, 0) / projectScores.length;
+    return Math.round(avg);
+  }, [projects]);
 
   return (
     <Drawer
@@ -140,12 +208,12 @@ export default function Sidebar() {
             build progress
           </Typography>
           <Typography sx={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.35)', fontFamily: '"DM Mono", monospace' }}>
-            34%
+            {buildProgress}%
           </Typography>
         </Box>
         <LinearProgress
           variant="determinate"
-          value={34}
+          value={buildProgress}
           sx={{
             height: 3,
             borderRadius: 2,

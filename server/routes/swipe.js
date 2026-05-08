@@ -55,6 +55,7 @@ router.post('/', ensureAuthenticated, async (req, res) => {
 
     onSwipe(req.user._id, direction === 'right').catch((err) => console.error('[elo] onSwipe error:', err.message));
 
+
     await User.findByIdAndUpdate(req.user._id, {
       lastActiveAt: now,
       lastSwipeAt: now,
@@ -89,15 +90,12 @@ router.post('/', ensureAuthenticated, async (req, res) => {
         // Score every candidate and pick the best available one
         let bestScore = null;
         let bestOther = null;
-        let bestOtherUser = null;
 
         for (const other of otherSwipes) {
-          // Skip if this exact pair already has a match for this idea
           const pk = matchPairKey(ideaId, req.user._id, other.user);
           const exists = await Match.findOne({ pairKey: pk });
           if (exists) continue;
 
-          // Skip if the other person is already matched on this idea with someone else
           const otherMatchedOnIdea = await Match.findOne({ idea: ideaId, users: other.user });
           if (otherMatchedOnIdea) continue;
 
@@ -111,11 +109,9 @@ router.post('/', ensureAuthenticated, async (req, res) => {
           if (!bestScore || score.total > bestScore.total) {
             bestScore = score;
             bestOther = other;
-            bestOtherUser = otherUser;
           }
         }
 
-        // Create exactly one match — with the highest-scoring candidate
         if (bestOther && bestScore) {
           const pk = matchPairKey(ideaId, req.user._id, bestOther.user);
           const orderedUsers = [req.user._id, bestOther.user].sort((a, b) =>

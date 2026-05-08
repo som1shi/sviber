@@ -16,15 +16,17 @@ const app = express();
 const httpServer = createServer(app);
 const PORT = process.env.PORT || 5001;
 
-// Trust Render's proxy so secure cookies work over HTTPS
+// Trust Render / reverse proxy so secure cookies work over HTTPS
 app.set('trust proxy', 1);
 
-const io = new Server(httpServer, {
-  cors: { origin: '*' },
-});
-app.set('io', io);
-
-const defaultDevOrigins = ['http://localhost:5173', 'http://localhost:5174', 'http://127.0.0.1:5173', 'http://127.0.0.1:5174'];
+const defaultDevOrigins = [
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://localhost:5175',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:5174',
+  'http://127.0.0.1:5175',
+];
 const corsAllowed = process.env.CLIENT_URL
   ? process.env.CLIENT_URL.split(',').map((s) => s.trim()).filter(Boolean)
   : defaultDevOrigins;
@@ -38,23 +40,37 @@ app.use(
     credentials: true,
   })
 );
+
+const io = new Server(httpServer, {
+  cors: {
+    origin: corsAllowed,
+    credentials: true,
+  },
+});
+app.set('io', io);
+
 app.use(express.json());
 
 const UPLOADS_ROOT = path.join(__dirname, 'uploads');
 if (!fs.existsSync(UPLOADS_ROOT)) fs.mkdirSync(UPLOADS_ROOT, { recursive: true });
 app.use('/uploads', express.static(UPLOADS_ROOT));
 
-app.use(session({
+const sessionOptions = {
   secret: process.env.SESSION_SECRET || 'dev-secret',
   resave: false,
   saveUninitialized: false,
-  store: MongoStore.create({ mongoUrl: process.env.MONGODB_URI }),
   cookie: {
     maxAge: 7 * 24 * 60 * 60 * 1000,
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     secure: process.env.NODE_ENV === 'production',
   },
-}));
+};
+if (process.env.MONGODB_URI) {
+  sessionOptions.store = MongoStore.create({ mongoUrl: process.env.MONGODB_URI });
+} else {
+  console.warn('MONGODB_URI not set — sessions use default MemoryStore (dev only).');
+}
+app.use(session(sessionOptions));
 
 const connectDB = require('./config/db');
 const { router: generateIdeasRouter, autoSeed } = require('./routes/generateIdeas');
@@ -87,13 +103,11 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// ─── Socket.IO ────────────────────────────────────────────────────────────────
+// ─── Socket.IO (match chat) ───────────────────────────────────────────────────
 const { Message } = require('./models/Message');
 const Match = require('./models/Match');
 
 io.on('connection', (socket) => {
-  console.log('socket connected:', socket.id);
-
   socket.on('join-room', async (matchId, callback) => {
     const match = await Match.findById(matchId).select('_id').lean().catch(() => null);
     if (!match) {
@@ -102,7 +116,6 @@ io.on('connection', (socket) => {
     }
 
     await socket.join(matchId);
-    console.log(`socket ${socket.id} joined room ${matchId}`);
 
     let history = [];
     try {
@@ -110,7 +123,9 @@ io.on('connection', (socket) => {
         .sort({ createdAt: 1 })
         .limit(50)
         .lean();
-    } catch (_) {}
+    } catch (_) {
+      /* ignore */
+    }
 
     if (callback) callback({ status: 'ok', history });
   });

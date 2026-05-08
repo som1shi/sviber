@@ -8,8 +8,8 @@ const { onProjectCompleted, onProjectAbandoned, onPeerRating } = require('../lib
 router.get('/', ensureAuthenticated, async (req, res) => {
   try {
     const projects = await Project.find({ 'contributors.user': req.user._id })
-      .populate('idea', 'title description tags')
-      .populate('contributors.user', 'displayName avatar')
+      .populate('idea', 'title description tags projectUrl imageUrl imageUpload')
+      .populate('contributors.user', 'name profilePic elo.total')
       .sort({ updatedAt: -1 });
     res.json(projects);
   } catch (err) {
@@ -20,7 +20,7 @@ router.get('/', ensureAuthenticated, async (req, res) => {
 // Create a draft project from a user upload form.
 router.post('/draft', ensureAuthenticated, async (req, res) => {
   try {
-    const { title, description, tags, projectUrl, imageUpload, imageUrl } = req.body;
+    const { title, description, tags, projectUrl, imageUpload, imageUrl, planning } = req.body;
 
     if (!title) return res.status(400).json({ error: 'title required' });
 
@@ -38,6 +38,17 @@ router.post('/draft', ensureAuthenticated, async (req, res) => {
       projectUrl: projectUrl ? String(projectUrl).trim() : '',
       imageUpload: imageUpload || undefined,
       imageUrl: imageUrl ? String(imageUrl).trim() : '',
+      planning: {
+        problem: String(planning?.problem || '').trim(),
+        targetUser: String(planning?.targetUser || '').trim(),
+        mvpScope: String(planning?.mvpScope || '').trim(),
+        successMetric: String(planning?.successMetric || '').trim(),
+        launchGoal: String(planning?.launchGoal || '').trim(),
+        risks: String(planning?.risks || '').trim(),
+        checklistDone: Array.isArray(planning?.checklistDone)
+          ? planning.checklistDone.map((item) => String(item || '').trim()).filter(Boolean)
+          : [],
+      },
       contributors: [{ user: req.user._id }],
       publishedToCommunity: false,
     });
@@ -58,7 +69,7 @@ router.post('/:id/publish', ensureAuthenticated, async (req, res) => {
 
     if (!project) return res.status(404).json({ error: 'Project not found' });
     if (project.idea) {
-      const { caption, notes, feedbackRequest } = req.body || {};
+      const { caption, notes, feedbackRequest, topic } = req.body || {};
       project.publishedToCommunity = true;
       await project.save();
       const already = await Idea.findOne({ _id: project.idea, founder: req.user._id });
@@ -66,11 +77,12 @@ router.post('/:id/publish', ensureAuthenticated, async (req, res) => {
       if (caption !== undefined) already.caption = String(caption || '').trim();
       if (notes !== undefined) already.notes = String(notes || '').trim();
       if (feedbackRequest !== undefined) already.feedbackRequest = String(feedbackRequest || '').trim();
+      if (topic !== undefined) already.topic = String(topic || '').trim();
       await already.save();
       return res.json(already);
     }
 
-    const { caption, notes, feedbackRequest } = req.body || {};
+    const { caption, notes, feedbackRequest, topic } = req.body || {};
     const idea = await Idea.create({
       founder: req.user._id,
       title: project.name,
@@ -78,6 +90,7 @@ router.post('/:id/publish', ensureAuthenticated, async (req, res) => {
       caption: String(caption || '').trim(),
       notes: String(notes || '').trim(),
       feedbackRequest: String(feedbackRequest || '').trim(),
+      topic: String(topic || '').trim(),
       tags: project.tags || [],
       projectUrl: project.projectUrl || '',
       imageUpload: project.imageUpload || undefined,
@@ -106,6 +119,7 @@ router.post('/', ensureAuthenticated, async (req, res) => {
       match: matchId,
       name,
       description,
+      publishedToCommunity: true,
       contributors: [{ user: req.user._id }],
     });
     res.status(201).json(project);
@@ -181,6 +195,48 @@ router.post('/:id/rate', ensureAuthenticated, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// PATCH /:id — update project fields and planning
+router.patch('/:id', ensureAuthenticated, async (req, res) => {
+  try {
+    const { title, description, tags, projectUrl, imageUpload, imageUrl, planning } = req.body || {};
+    const project = await Project.findOne({
+      _id: req.params.id,
+      'contributors.user': req.user._id,
+    });
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+
+    if (title !== undefined) project.name = String(title || '').trim();
+    if (description !== undefined) project.description = String(description || '').trim();
+    if (tags !== undefined) {
+      project.tags = Array.isArray(tags)
+        ? tags.map((t) => String(t).trim()).filter(Boolean)
+        : String(tags || '').split(',').map((t) => t.trim()).filter(Boolean);
+    }
+    if (projectUrl !== undefined) project.projectUrl = String(projectUrl || '').trim();
+    if (imageUpload !== undefined) project.imageUpload = imageUpload || undefined;
+    if (imageUrl !== undefined) project.imageUrl = String(imageUrl || '').trim();
+    if (planning !== undefined) {
+      project.planning = {
+        problem: String(planning?.problem || '').trim(),
+        targetUser: String(planning?.targetUser || '').trim(),
+        mvpScope: String(planning?.mvpScope || '').trim(),
+        successMetric: String(planning?.successMetric || '').trim(),
+        launchGoal: String(planning?.launchGoal || '').trim(),
+        risks: String(planning?.risks || '').trim(),
+        checklistDone: Array.isArray(planning?.checklistDone)
+          ? planning.checklistDone.map((item) => String(item || '').trim()).filter(Boolean)
+          : [],
+      };
+    }
+
+    await project.save();
+    res.json(project);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 router.post('/:id/tasks', ensureAuthenticated, async (req, res) => {
   try {

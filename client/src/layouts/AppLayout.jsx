@@ -4,7 +4,7 @@ import Sidebar from '../components/Sidebar';
 
 export default function AppLayout() {
   const { pathname } = useLocation();
-  const isChat = pathname.startsWith('/app/matches/') || pathname === '/app/community';
+  const isChat = pathname.startsWith('/app/matches/');
 
   return (
     <Box sx={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>

@@ -2,113 +2,75 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Box, Typography, Tabs, Tab, Card, CardContent,
   Avatar, Chip, IconButton, Button, Divider, Dialog, DialogTitle, DialogContent,
-  DialogActions, TextField, CircularProgress, Alert, MenuItem
+  DialogActions, TextField, CircularProgress, Alert, MenuItem, LinearProgress, Skeleton, Tooltip
 } from '@mui/material';
 import {
   KeyboardArrowUp, KeyboardArrowDown, Star, StarBorder,
-  Build, Add, LocalFireDepartment
+  Build, Add, LocalFireDepartment, ChatOutlined, ShareOutlined, MoreHoriz
 } from '@mui/icons-material';
-import { useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useLocation } from 'react-router-dom';
 
 const TABS = ['Hot', 'New', 'Building', 'Mine'];
+const DEFAULT_TOPIC_OPTIONS = ['AI', 'SaaS', 'Consumer', 'Fintech', 'Marketplace', 'Social', 'EdTech', 'Health'];
 // In dev, use same-origin paths so cookies work via Vite proxy.
 const API = import.meta.env.DEV ? '' : (import.meta.env.VITE_API_URL || '');
 
-const mockIdeas = [
-  {
-    id: 1,
-    author: 'Ariel S.',
-    authorElo: 847,
-    role: 'Founder',
-    title: 'BOGO Optimizer — never pay full price again',
-    description: 'ML model that tracks every BOGO deal across 200+ grocery chains, tells you exactly when to bulk-buy Oreos. IRR on snacks: 340%.',
-    heat: 94,
-    upvotes: 312,
-    builders: 41,
-    tags: ['AI', 'Finance'],
-    saved: false,
-    building: false,
-    isNew: false,
-  },
-  {
-    id: 2,
-    author: 'Rishabh A.',
-    authorElo: 612,
-    role: 'Builder',
-    title: "LinkedIn but for your dog — PawdIn",
-    description: "Professional networking for dogs. Endorse your golden retriever for 'fetching' and 'squirrel awareness'. 500+ connections or you're a bad owner.",
-    heat: 88,
-    upvotes: 245,
-    builders: 18,
-    tags: ['Social', 'Pets'],
-    saved: true,
-    building: false,
-    isNew: false,
-  },
-  {
-    id: 3,
-    author: 'Serena H.',
-    authorElo: 390,
-    role: 'Hacker',
-    title: "Uber but for borrowing your neighbor's stuff",
-    description: "Why buy a drill you'll use once? Rent Dave's drill for $2. Dave has 47 drills. Dave has a problem. Dave needs this app.",
-    heat: 76,
-    upvotes: 189,
-    builders: 12,
-    tags: ['Marketplace', 'Sustainability'],
-    saved: false,
-    building: false,
-    isNew: false,
-  },
-  {
-    id: 4,
-    author: 'Maya K.',
-    authorElo: 455,
-    role: 'Hacker',
-    title: "AI that replies to your landlord so you don't have to",
-    description: "Trained on 10,000 passive-aggressive landlord emails. Responds politely, legally, and 40% more effectively than you would while angry.",
-    heat: 71,
-    upvotes: 156,
-    builders: 9,
-    tags: ['AI', 'Legal'],
-    saved: false,
-    building: false,
-    isNew: true,
-  },
-  {
-    id: 5,
-    author: 'Justin T.',
-    authorElo: 520,
-    role: 'Builder',
-    title: 'Yelp for your coworkers',
-    description: '1-5 stars. Leave anonymous reviews. "Greg microwaves fish daily, 1 star." Finally hold people accountable for the thing.',
-    heat: 65,
-    upvotes: 98,
-    builders: 6,
-    tags: ['Social', 'Productivity'],
-    saved: false,
-    building: false,
-    isNew: true,
-  },
-];
+const roleColors = { Founder: '#16a34a', Builder: '#2563eb', Hacker: '#9333ea' };
 
-const roleColors = {
-  Founder: '#16a34a',
-  Builder: '#2563eb',
-  Hacker: '#9333ea',
-};
+function timeAgo(dateLike) {
+  const ts = new Date(dateLike).getTime();
+  if (!Number.isFinite(ts)) return '';
+  const diff = Date.now() - ts;
+  const sec = Math.max(1, Math.floor(diff / 1000));
+  if (sec < 60) return `${sec}s`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h`;
+  const day = Math.floor(hr / 24);
+  if (day < 7) return `${day}d`;
+  const wk = Math.floor(day / 7);
+  if (wk < 8) return `${wk}w`;
+  const mo = Math.floor(day / 30);
+  if (mo < 12) return `${mo}mo`;
+  const yr = Math.floor(day / 365);
+  return `${yr}y`;
+}
 
-function IdeaCard({ idea, onUpvote, onDownvote, onToggleSave, onToggleBuild }) {
+function initials(name) {
+  return String(name || 'Founder')
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase();
+}
+
+function IdeaCard({ idea, onUpvote, onDownvote, onToggleSave, onToggleBuild, onOpen }) {
+  const heat = Math.min(100, Math.max(0, Number(idea.heat) || 0));
+  const heatColor =
+    heat >= 80 ? '#f97316' : heat >= 55 ? '#f59e0b' : heat >= 30 ? '#60a5fa' : '#a3a3a3';
+  const stopAnd = (fn) => (e) => {
+    e.stopPropagation();
+    fn?.();
+  };
   return (
     <Card
       elevation={0}
+      onClick={() => onOpen?.(idea)}
       sx={{
         border: '1px solid #e5e7eb',
         borderRadius: 3,
         backgroundColor: '#fff',
         boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
-        '&:hover': { borderColor: '#d1d5db', boxShadow: '0 4px 16px rgba(0,0,0,0.08)' },
+        cursor: 'pointer',
+        '&:hover': {
+          borderColor: '#d1d5db',
+          boxShadow: '0 12px 30px rgba(0,0,0,0.10)',
+          transform: 'translateY(-2px)',
+        },
         transition: 'all 0.15s ease',
       }}
     >
@@ -116,18 +78,25 @@ function IdeaCard({ idea, onUpvote, onDownvote, onToggleSave, onToggleBuild }) {
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Avatar sx={{ width: 28, height: 28, fontSize: 12, bgcolor: '#111' }}>
-              {idea.author.split(' ').map(n => n[0]).join('')}
+              {initials(idea.author)}
             </Avatar>
-            <Typography sx={{ fontWeight: 600, fontSize: 13 }}>{idea.author}</Typography>
-            <Typography sx={{ fontSize: 12, color: '#9ca3af' }}>{idea.authorElo}</Typography>
+            <Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography sx={{ fontWeight: 700, fontSize: 13 }}>{idea.author}</Typography>
+                <Typography sx={{ fontSize: 12, color: '#9ca3af' }}>{timeAgo(idea.createdAt)}</Typography>
+              </Box>
+              <Typography sx={{ fontSize: 12, color: '#9ca3af' }}>
+                ELO {idea.authorElo}
+              </Typography>
+            </Box>
             <Chip
               label={idea.role}
               size="small"
               sx={{
                 fontSize: 11,
                 height: 20,
-                bgcolor: `${roleColors[idea.role]}15`,
-                color: roleColors[idea.role],
+                bgcolor: `${roleColors[idea.role] || '#6b7280'}15`,
+                color: roleColors[idea.role] || '#6b7280',
                 fontWeight: 600,
                 border: 'none',
               }}
@@ -138,8 +107,41 @@ function IdeaCard({ idea, onUpvote, onDownvote, onToggleSave, onToggleBuild }) {
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
             <LocalFireDepartment sx={{ fontSize: 14, color: '#f97316' }} />
-            <Typography sx={{ fontSize: 12, fontWeight: 600, color: '#f97316' }}>{idea.heat}%</Typography>
+            <Typography sx={{ fontSize: 12, fontWeight: 700, color: heatColor }}>{heat}%</Typography>
+            <Tooltip title="More">
+              <IconButton size="small" sx={{ ml: 0.5 }} onClick={(e) => e.stopPropagation()}>
+                <MoreHoriz sx={{ fontSize: 18, color: '#9ca3af' }} />
+              </IconButton>
+            </Tooltip>
           </Box>
+        </Box>
+
+        {/* Heat meter makes the card feel “alive” */}
+        <Box sx={{ mb: 2.25 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.8 }}>
+            <Typography sx={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase' }}>
+              Heat
+            </Typography>
+            <Typography sx={{ fontSize: 11, fontWeight: 800, color: heatColor }}>{heat >= 80 ? 'Spicy' : 'Rising'}</Typography>
+          </Box>
+          <LinearProgress
+            variant="determinate"
+            value={heat}
+            sx={{
+              height: 8,
+              borderRadius: 999,
+              backgroundColor: '#eef2f7',
+              '& .MuiLinearProgress-bar': {
+                borderRadius: 999,
+                backgroundImage:
+                  heat >= 80
+                    ? 'linear-gradient(90deg, #f97316, #fb7185)'
+                    : heat >= 55
+                    ? 'linear-gradient(90deg, #f59e0b, #fbbf24)'
+                    : 'linear-gradient(90deg, #60a5fa, #93c5fd)',
+              },
+            }}
+          />
         </Box>
 
         <Typography sx={{ fontWeight: 700, fontSize: 15, mb: 0.75, lineHeight: 1.3 }}>
@@ -173,15 +175,55 @@ function IdeaCard({ idea, onUpvote, onDownvote, onToggleSave, onToggleBuild }) {
         )}
 
         <Box sx={{ display: 'flex', gap: 0.75, mb: 2, flexWrap: 'wrap' }}>
+          {idea.topic && (
+            <Chip
+              label={idea.topic}
+              size="small"
+              sx={{
+                fontSize: 11,
+                height: 22,
+                bgcolor: '#ecfeff',
+                color: '#0f766e',
+                border: '1px solid #ccfbf1',
+                fontWeight: 700,
+              }}
+            />
+          )}
           {idea.tags.map(tag => (
             <Chip
               key={tag}
               label={tag}
               size="small"
-              sx={{ fontSize: 11, height: 22, bgcolor: '#f9fafb', color: '#374151', border: '1px solid #e5e7eb' }}
+              sx={{
+                fontSize: 11,
+                height: 22,
+                bgcolor: '#f8fafc',
+                color: '#111827',
+                border: '1px solid #e5e7eb',
+                '&:hover': { borderColor: '#cbd5e1', bgcolor: '#f1f5f9' },
+              }}
             />
           ))}
         </Box>
+
+        {idea.imageUrl && (
+          <Box sx={{ mb: 2 }}>
+            <Box
+              component="img"
+              src={idea.imageUrl}
+              alt={idea.title}
+              sx={{
+                width: { xs: '55%', md: '25%' },
+                maxHeight: 90,
+                objectFit: 'cover',
+                borderRadius: 2,
+                border: '1px solid #e5e7eb',
+                backgroundColor: '#f9fafb',
+                display: 'block',
+              }}
+            />
+          </Box>
+        )}
 
         <Divider sx={{ mb: 2 }} />
 
@@ -189,7 +231,7 @@ function IdeaCard({ idea, onUpvote, onDownvote, onToggleSave, onToggleBuild }) {
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
             <IconButton
               size="small"
-              onClick={() => onUpvote(idea.id)}
+              onClick={stopAnd(() => onUpvote(idea.id))}
               sx={{ p: 0.5, color: idea.userVote === 1 ? '#7C5CFC' : 'inherit' }}
             >
               <KeyboardArrowUp sx={{ fontSize: 18 }} />
@@ -199,7 +241,7 @@ function IdeaCard({ idea, onUpvote, onDownvote, onToggleSave, onToggleBuild }) {
             </Typography>
             <IconButton
               size="small"
-              onClick={() => onDownvote(idea.id)}
+              onClick={stopAnd(() => onDownvote(idea.id))}
               sx={{ p: 0.5, color: idea.userVote === -1 ? '#ef4444' : 'inherit' }}
             >
               <KeyboardArrowDown sx={{ fontSize: 18 }} />
@@ -210,7 +252,7 @@ function IdeaCard({ idea, onUpvote, onDownvote, onToggleSave, onToggleBuild }) {
             <Button
               size="small"
               startIcon={<Build sx={{ fontSize: 13 }} />}
-              onClick={() => onToggleBuild(idea.id)}
+              onClick={stopAnd(() => onToggleBuild(idea.id))}
               sx={{
                 fontSize: 12,
                 textTransform: 'none',
@@ -222,7 +264,17 @@ function IdeaCard({ idea, onUpvote, onDownvote, onToggleSave, onToggleBuild }) {
             >
               {idea.builders} builders
             </Button>
-            <IconButton size="small" onClick={() => onToggleSave(idea.id)} sx={{ p: 0.5 }}>
+            <Tooltip title="Open post">
+              <IconButton size="small" onClick={stopAnd(() => onOpen?.(idea))} sx={{ p: 0.5 }}>
+                <ChatOutlined sx={{ fontSize: 16, color: '#6b7280' }} />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Share">
+              <IconButton size="small" sx={{ p: 0.5 }} onClick={(e) => e.stopPropagation()}>
+                <ShareOutlined sx={{ fontSize: 16, color: '#6b7280' }} />
+              </IconButton>
+            </Tooltip>
+            <IconButton size="small" onClick={stopAnd(() => onToggleSave(idea.id))} sx={{ p: 0.5 }}>
               {idea.saved
                 ? <Star sx={{ fontSize: 16, color: '#f59e0b' }} />
                 : <StarBorder sx={{ fontSize: 16, color: '#9ca3af' }} />}
@@ -255,11 +307,17 @@ export default function CommunityPage() {
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [projectsError, setProjectsError] = useState('');
   const [selectedProjectId, setSelectedProjectId] = useState('');
+  const [topicFilter, setTopicFilter] = useState('all');
+  const [postTopic, setPostTopic] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [postCaption, setPostCaption] = useState('');
   const [postNotes, setPostNotes] = useState('');
   const [postFeedbackRequest, setPostFeedbackRequest] = useState('');
   const [posting, setPosting] = useState(false);
   const [editIdea, setEditIdea] = useState(null);
+  const [activeIdea, setActiveIdea] = useState(null);
+  const [commentDraft, setCommentDraft] = useState('');
+  const [commentSubmitting, setCommentSubmitting] = useState(false);
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editTags, setEditTags] = useState('');
@@ -269,6 +327,7 @@ export default function CommunityPage() {
 
   const totalUpvotes = ideas.reduce((sum, i) => sum + i.upvotes, 0);
   const wantToBuild = ideas.reduce((sum, i) => sum + i.builders, 0);
+  // Use nullish checks so 0 stays 0 (and we never render the full elo object).
   const myElo =
     (typeof user?.elo?.total === 'number' ? user.elo.total : undefined)
     ?? (typeof user?.elo === 'number' ? user.elo : undefined)
@@ -299,18 +358,30 @@ export default function CommunityPage() {
         caption: idea.caption || '',
         notes: idea.notes || '',
         feedbackRequest: idea.feedbackRequest || '',
+        topic: idea.topic || '',
         description: idea.description,
-        heat: idea.eloScore || 0,
+        heat: idea.heatScore ?? idea.eloScore ?? 0,
         upvotes: idea.upvotes || 0,
         downvotes: idea.downvotes || 0,
         userVote: 0,
         builders: idea.builderCount || 0,
+        viewCount: idea.viewCount || 0,
         tags: idea.tags || [],
         projectUrl: idea.projectUrl || '',
         imageUrl: idea.imageUrl || '',
         saved: false,
         building: idea.status === 'building',
         isNew: Date.now() - new Date(idea.createdAt).getTime() < 24 * 60 * 60 * 1000,
+        createdAt: idea.createdAt,
+        comments: Array.isArray(idea.comments)
+          ? idea.comments.map((c) => ({
+            id: c._id,
+            text: c.text || '',
+            createdAt: c.createdAt,
+            author: c.user?.name || 'User',
+            authorAvatar: c.user?.profilePic || '',
+          }))
+          : [],
       }));
       setIdeas(mapped);
     } catch (err) {
@@ -384,13 +455,72 @@ export default function CommunityPage() {
     setIdeas(prev => prev.map(i => i.id === id ? { ...i, building: !i.building, builders: i.building ? i.builders - 1 : i.builders + 1 } : i));
   };
 
-  const filteredIdeas = tab === 3
-    ? ideas.filter(i => i.saved)
-    : tab === 2
+  const topicOptions = useMemo(() => {
+    const tagsFromIdeas = ideas.flatMap((i) => Array.isArray(i.tags) ? i.tags : []);
+    const tagsFromProjects = projects.flatMap((p) => Array.isArray(p.tags) ? p.tags : []);
+    const merged = [...DEFAULT_TOPIC_OPTIONS, ...tagsFromIdeas, ...tagsFromProjects]
+      .map((t) => String(t || '').trim())
+      .filter(Boolean);
+    return ['all', ...Array.from(new Set(merged))];
+  }, [ideas, projects]);
+
+  const filteredIdeasByTab = tabName === 'mine'
+    ? ideas
+    : tabName === 'building'
     ? ideas.filter(i => i.building)
-    : tab === 1
-    ? [...ideas].sort((a, b) => b.id - a.id)
+    : tabName === 'new'
+    ? [...ideas].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     : [...ideas].sort((a, b) => b.heat - a.heat);
+
+  const filteredIdeas = topicFilter === ‘all’
+    ? filteredIdeasByTab
+    : filteredIdeasByTab.filter((idea) => {
+      const topicMatch = String(idea.topic || ‘’).toLowerCase() === topicFilter.toLowerCase();
+      const tagMatch = (idea.tags || []).some((t) => String(t).toLowerCase() === topicFilter.toLowerCase());
+      return topicMatch || tagMatch;
+    });
+
+  const searchedIdeas = searchQuery.trim()
+    ? filteredIdeas.filter((idea) => {
+      const q = searchQuery.trim().toLowerCase();
+      return [
+        idea.title,
+        idea.caption,
+        idea.description,
+        idea.topic,
+        ...(idea.tags || []),
+      ]
+        .filter(Boolean)
+        .some((field) => String(field).toLowerCase().includes(q));
+    })
+    : filteredIdeas;
+
+  const hasIdeas = !loading && searchedIdeas.length > 0;
+  const emptyCopy = useMemo(() => {
+    if (tabName === ‘mine’) {
+      return {
+        title: ‘Be the first to post’,
+        subtitle: ‘Share a project idea so others can ask questions and collaborate.’,
+      };
+    }
+    if (tabName === ‘building’) {
+      return {
+        title: ‘No building ideas yet’,
+        subtitle: ‘When people start building, they\’ll show up here.’,
+      };
+    }
+    if (topicFilter !== ‘all’) {
+      return {
+        title: `No ${topicFilter} posts yet`,
+        subtitle: ‘Pick another topic or be the first to start this conversation.’,
+      };
+    }
+    return {
+      title: ‘Be the first to post an idea’,
+      subtitle: ‘Start the discussion — post a project and ask for feedback.’,
+    };
+  }, [tabName, topicFilter]);
+
 
   const handlePostIdea = async () => {
     try {
@@ -408,6 +538,7 @@ export default function CommunityPage() {
           caption: postCaption,
           notes: postNotes,
           feedbackRequest: postFeedbackRequest,
+          topic: postTopic,
         }),
       });
       if (!res.ok) {
@@ -419,6 +550,7 @@ export default function CommunityPage() {
       setPostCaption('');
       setPostNotes('');
       setPostFeedbackRequest('');
+      setPostTopic('');
       setTab(1);
       loadIdeas();
     } catch (err) {
@@ -489,9 +621,72 @@ export default function CommunityPage() {
     }
   };
 
+  const openIdea = async (idea) => {
+    setActiveIdea(idea);
+    setCommentDraft('');
+    try {
+      const res = await fetch(`${API}/api/ideas/${idea.id}/view`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setIdeas((prev) => prev.map((i) => (
+        i.id === idea.id
+          ? { ...i, viewCount: data.viewCount ?? i.viewCount, heat: data.heatScore ?? i.heat }
+          : i
+      )));
+      setActiveIdea((prev) => (
+        prev && prev.id === idea.id
+          ? { ...prev, viewCount: data.viewCount ?? prev.viewCount, heat: data.heatScore ?? prev.heat }
+          : prev
+      ));
+    } catch {
+      // Non-blocking: modal still opens even if view tracking fails.
+    }
+  };
+
+  const handleAddComment = async () => {
+    if (!activeIdea?.id || !commentDraft.trim()) return;
+    try {
+      setCommentSubmitting(true);
+      const res = await fetch(`${API}/api/ideas/${activeIdea.id}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ text: commentDraft.trim() }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || 'Failed to add comment');
+      }
+      const created = await res.json();
+      const mappedComment = {
+        id: created.comment?._id,
+        text: created.comment?.text || '',
+        createdAt: created.comment?.createdAt,
+        author: created.comment?.user?.name || user?.name || 'You',
+        authorAvatar: created.comment?.user?.profilePic || '',
+      };
+      setIdeas((prev) => prev.map((i) => (
+        i.id === activeIdea.id
+          ? { ...i, comments: [...(i.comments || []), mappedComment], heat: created.heatScore ?? i.heat }
+          : i
+      )));
+      setActiveIdea((prev) => (
+        prev ? { ...prev, comments: [...(prev.comments || []), mappedComment], heat: created.heatScore ?? prev.heat } : prev
+      ));
+      setCommentDraft('');
+    } catch (err) {
+      setError(err.message || 'Failed to add comment');
+    } finally {
+      setCommentSubmitting(false);
+    }
+  };
+
 
   return (
-    <Box>
+    <Box sx={{ maxWidth: 980, mx: 'auto', width: '100%' }}>
       <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 3 }}>
         <Box>
           <Typography variant="h4" sx={{ fontWeight: 700, mb: 0.5 }}>
@@ -521,47 +716,156 @@ export default function CommunityPage() {
         </Button>
       </Box>
 
-      <Box sx={{ display: 'flex', gap: 4, mb: 3 }}>
-        {[
-          { label: 'total upvotes', value: totalUpvotes },
-          { label: 'want to build', value: wantToBuild },
-          { label: 'ELO score', value: myElo },
-        ].map(stat => (
-          <Box key={stat.label}>
-            <Typography sx={{ fontWeight: 700, fontSize: 22 }}>{stat.value}</Typography>
-            <Typography sx={{ fontSize: 12, color: '#9ca3af' }}>{stat.label}</Typography>
-          </Box>
-        ))}
-      </Box>
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-      <Tabs
-        value={tab}
-        onChange={(_, v) => setTab(v)}
+      {/* Composer card (social-feed style) */}
+      <Card
+        elevation={0}
         sx={{
-          mb: 3,
-          '& .MuiTab-root': { textTransform: 'none', fontWeight: 600, fontSize: 13, minWidth: 80 },
-          '& .MuiTabs-indicator': { bgcolor: '#111' },
-          '& .Mui-selected': { color: '#111' },
+          border: '1px solid #e5e7eb',
+          borderRadius: 3,
+          backgroundColor: '#fff',
+          boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
+          mb: 2.5,
         }}
       >
-        {TABS.map(t => <Tab key={t} label={t} />)}
-      </Tabs>
+        <CardContent sx={{ p: 2.25, display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          <Avatar sx={{ width: 36, height: 36, bgcolor: '#111' }}>
+            {initials(user?.name)}
+          </Avatar>
+          <TextField
+            fullWidth
+            placeholder="Search posts by caption, idea, tags, or topic..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            size="small"
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                borderRadius: 999,
+                backgroundColor: '#fff',
+              },
+            }}
+          />
+        </CardContent>
+      </Card>
 
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {filteredIdeas.length === 0 ? (
-          <Typography sx={{ color: '#9ca3af', textAlign: 'center', py: 6 }}>
-            Nothing here yet.
-          </Typography>
-        ) : (
-          filteredIdeas.map(idea => (
-            <IdeaCard
-              key={idea.id}
-              idea={idea}
-              onUpvote={handleUpvote}
-              onDownvote={handleDownvote}
-              onToggleSave={handleToggleSave}
-              onToggleBuild={handleToggleBuild}
-            />
+      {hasIdeas && (
+        <Box sx={{ display: 'flex', gap: 5, mb: 3 }}>
+          {[
+            { label: 'total upvotes', value: totalUpvotes },
+            { label: 'want to build', value: wantToBuild },
+            { label: 'ELO score', value: myElo },
+          ].map((stat) => (
+            <Box key={stat.label}>
+              <Typography sx={{ fontWeight: 800, fontSize: 22 }}>{stat.value}</Typography>
+              <Typography sx={{ fontSize: 12, color: '#9ca3af' }}>{stat.label}</Typography>
+            </Box>
+          ))}
+        </Box>
+      )}
+
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2.5, gap: 2 }}>
+        <Tabs
+          value={tab}
+          onChange={(_, v) => setTab(v)}
+          sx={{
+            '& .MuiTab-root': { textTransform: 'none', fontWeight: 600, fontSize: 13, minWidth: 80 },
+            '& .MuiTabs-indicator': { bgcolor: '#111' },
+            '& .Mui-selected': { color: '#111 !important' },
+          }}
+        >
+          {TABS.map(t => <Tab key={t} label={t} />)}
+        </Tabs>
+        <TextField
+          select
+          label="Topic"
+          value={topicFilter}
+          onChange={(e) => setTopicFilter(e.target.value)}
+          size="small"
+          sx={{
+            minWidth: 210,
+            '& .MuiOutlinedInput-root': {
+              borderRadius: 999,
+              backgroundColor: '#fff',
+              fontWeight: 600,
+              '& fieldset': { borderColor: '#d1d5db', borderWidth: 1.5 },
+              '&:hover fieldset': { borderColor: '#9ca3af' },
+              '&.Mui-focused fieldset': { borderColor: '#111', borderWidth: 2 },
+            },
+            '& .MuiInputLabel-root': { color: '#6b7280', fontWeight: 600 },
+            '& .MuiInputLabel-root.Mui-focused': { color: '#374151' },
+          }}
+        >
+          <MenuItem value="all">All topics</MenuItem>
+          {topicOptions.filter((t) => t !== 'all').map((topic) => (
+            <MenuItem key={topic} value={topic}>{topic}</MenuItem>
+          ))}
+        </TextField>
+      </Box>
+
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.25, pb: 2 }}>
+        {loading && (
+          <Box sx={{ py: 2 }}>
+            {[0, 1, 2].map((k) => (
+              <Card key={k} elevation={0} sx={{ border: '1px solid #e5e7eb', borderRadius: 3, mb: 2, backgroundColor: '#fff' }}>
+                <CardContent sx={{ p: 3 }}>
+                  <Box sx={{ display: 'flex', gap: 1.25, alignItems: 'center', mb: 2 }}>
+                    <Skeleton variant="circular" width={28} height={28} />
+                    <Skeleton variant="text" width={160} height={18} />
+                    <Skeleton variant="rounded" width={70} height={18} />
+                  </Box>
+                  <Skeleton variant="text" width="70%" height={22} />
+                  <Skeleton variant="text" width="95%" height={18} />
+                  <Skeleton variant="text" width="88%" height={18} />
+                  <Box sx={{ mt: 2 }}>
+                    <Skeleton variant="rounded" width="100%" height={8} />
+                  </Box>
+                </CardContent>
+              </Card>
+            ))}
+          </Box>
+        )}
+        {!loading && searchedIdeas.length === 0 ? (
+          <Box sx={{ py: 10, px: 2, textAlign: 'center' }}>
+            <Typography sx={{ fontSize: 20, fontWeight: 900, mb: 0.75 }}>{emptyCopy.title}</Typography>
+            <Typography sx={{ color: '#6b7280', mb: 3, mx: 'auto', maxWidth: 520, lineHeight: 1.5 }}>
+              {emptyCopy.subtitle}
+            </Typography>
+            <Button
+              variant="contained"
+              onClick={() => { setPostOpen(true); loadProjects(); }}
+              sx={{ bgcolor: '#111', color: '#fff', borderRadius: 2, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: '#333' } }}
+              startIcon={<Add />}
+            >
+              Post idea
+            </Button>
+          </Box>
+        ) : !loading && (
+          searchedIdeas.map(idea => (
+            <Box key={idea.id}>
+              <IdeaCard
+                idea={idea}
+                onUpvote={handleUpvote}
+                onDownvote={handleDownvote}
+                onToggleSave={handleToggleSave}
+                onToggleBuild={handleToggleBuild}
+                onOpen={openIdea}
+              />
+              {(idea.projectUrl || String(idea.founderId) === String(user?._id || user?.id)) && (
+                <Box sx={{ mt: -0.5, mb: 2.5, px: 2, display: 'flex', gap: 1 }}>
+                  {idea.projectUrl && (
+                    <Button size="small" variant="outlined" href={idea.projectUrl} target="_blank" rel="noreferrer" sx={{ textTransform: 'none' }}>
+                      Open project
+                    </Button>
+                  )}
+                  {String(idea.founderId) === String(user?._id || user?.id) && (
+                    <Button size="small" variant="text" onClick={() => openEdit(idea)} sx={{ textTransform: 'none' }}>
+                      Edit post
+                    </Button>
+                  )}
+                </Box>
+              )}
+            </Box>
           ))
         )}
       </Box>
@@ -588,6 +892,11 @@ export default function CommunityPage() {
           <TextField label="Caption (optional)" value={postCaption} onChange={(e) => setPostCaption(e.target.value)} fullWidth />
           <TextField label="Notes (optional)" value={postNotes} onChange={(e) => setPostNotes(e.target.value)} multiline minRows={4} fullWidth />
           <TextField label="Ask for feedback (optional)" value={postFeedbackRequest} onChange={(e) => setPostFeedbackRequest(e.target.value)} placeholder="Pricing, landing page copy, onboarding, etc." fullWidth />
+          <TextField select label="Topic" value={postTopic} onChange={(e) => setPostTopic(e.target.value)} fullWidth>
+            {topicOptions.filter((t) => t !== 'all').map((topic) => (
+              <MenuItem key={topic} value={topic}>{topic}</MenuItem>
+            ))}
+          </TextField>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setPostOpen(false)} disabled={posting}>Cancel</Button>
@@ -614,6 +923,81 @@ export default function CommunityPage() {
           <Button variant="contained" onClick={handleSaveEdit} disabled={editing || !editTitle.trim() || !editDescription.trim()}>
             {editing ? 'Saving...' : 'Save changes'}
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Post detail modal */}
+      <Dialog open={Boolean(activeIdea)} onClose={() => setActiveIdea(null)} fullWidth maxWidth="lg" PaperProps={{ sx: { borderRadius: 3, width: 'min(1100px, 96vw)', minHeight: '78vh' } }}>
+        <DialogTitle>Post</DialogTitle>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: 1 }}>
+          {activeIdea && (
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: activeIdea.imageUrl ? '1.15fr 0.85fr' : '1fr' }, gap: 2, minHeight: '64vh' }}>
+              <Box sx={{ display: 'grid', gap: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Avatar sx={{ width: 34, height: 34, bgcolor: '#111' }}>{initials(activeIdea.author)}</Avatar>
+                  <Box>
+                    <Typography sx={{ fontWeight: 800 }}>{activeIdea.author}</Typography>
+                    <Typography sx={{ fontSize: 12, color: '#9ca3af' }}>{timeAgo(activeIdea.createdAt)} • ELO {activeIdea.authorElo}</Typography>
+                  </Box>
+                </Box>
+                <Typography sx={{ fontWeight: 900, fontSize: 20, lineHeight: 1.25 }}>{activeIdea.title}</Typography>
+                {activeIdea.caption && <Typography sx={{ color: '#374151', lineHeight: 1.6 }}>{activeIdea.caption}</Typography>}
+                <Typography sx={{ color: '#6b7280', lineHeight: 1.6 }}>{activeIdea.description}</Typography>
+                {activeIdea.imageUrl && (
+                  <Box component="img" src={activeIdea.imageUrl} alt={activeIdea.title} sx={{ width: '100%', maxHeight: { xs: 260, md: 360 }, objectFit: 'cover', borderRadius: 2, border: '1px solid #e5e7eb', backgroundColor: '#f9fafb' }} />
+                )}
+                {!!activeIdea.tags?.length && (
+                  <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
+                    {activeIdea.topic && <Chip label={activeIdea.topic} size="small" sx={{ bgcolor: '#ecfeff', border: '1px solid #ccfbf1', color: '#0f766e', fontWeight: 700 }} />}
+                    {activeIdea.tags.map((t) => <Chip key={t} label={t} size="small" sx={{ bgcolor: '#f8fafc', border: '1px solid #e5e7eb' }} />)}
+                  </Box>
+                )}
+                {activeIdea.feedbackRequest && (
+                  <Alert severity="info" sx={{ borderRadius: 2 }}>
+                    <Typography sx={{ fontWeight: 800, mb: 0.5 }}>Asking for feedback</Typography>
+                    <Typography sx={{ color: '#374151' }}>{activeIdea.feedbackRequest}</Typography>
+                  </Alert>
+                )}
+                {activeIdea.notes && (
+                  <Card elevation={0} sx={{ border: '1px solid #e5e7eb', borderRadius: 2 }}>
+                    <CardContent sx={{ p: 2 }}>
+                      <Typography sx={{ fontWeight: 900, mb: 0.5 }}>Notes</Typography>
+                      <Typography sx={{ color: '#6b7280', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{activeIdea.notes}</Typography>
+                    </CardContent>
+                  </Card>
+                )}
+              </Box>
+              <Card elevation={0} sx={{ border: '1px solid #e5e7eb', borderRadius: 2, display: 'flex', flexDirection: 'column', minHeight: 380 }}>
+                <CardContent sx={{ p: 2, flex: 1, display: 'flex', flexDirection: 'column' }}>
+                  <Typography sx={{ fontWeight: 900, mb: 1 }}>Comments ({activeIdea.comments?.length || 0})</Typography>
+                  <Box sx={{ display: 'grid', gap: 1.25, mb: 1.5, maxHeight: 420, overflowY: 'auto', pr: 0.5 }}>
+                    {(activeIdea.comments || []).length === 0 ? (
+                      <Typography sx={{ color: '#9ca3af', fontSize: 14 }}>No comments yet. Be the first to reply.</Typography>
+                    ) : (
+                      (activeIdea.comments || []).map((c) => (
+                        <Box key={c.id} sx={{ display: 'flex', gap: 1 }}>
+                          <Avatar src={c.authorAvatar} sx={{ width: 28, height: 28, bgcolor: '#111', fontSize: 12 }}>{!c.authorAvatar ? initials(c.author) : null}</Avatar>
+                          <Box sx={{ flex: 1 }}>
+                            <Typography sx={{ fontWeight: 700, fontSize: 13 }}>{c.author} <Box component="span" sx={{ color: '#9ca3af', fontWeight: 500 }}>{timeAgo(c.createdAt)}</Box></Typography>
+                            <Typography sx={{ color: '#374151', lineHeight: 1.5, fontSize: 14 }}>{c.text}</Typography>
+                          </Box>
+                        </Box>
+                      ))
+                    )}
+                  </Box>
+                  <Box sx={{ display: 'flex', gap: 1, mt: 'auto' }}>
+                    <TextField size="small" fullWidth placeholder="Write a comment..." value={commentDraft} onChange={(e) => setCommentDraft(e.target.value)} />
+                    <Button variant="contained" onClick={handleAddComment} disabled={commentSubmitting || !commentDraft.trim()} sx={{ textTransform: 'none', fontWeight: 700 }}>
+                      {commentSubmitting ? 'Posting...' : 'Post'}
+                    </Button>
+                  </Box>
+                </CardContent>
+              </Card>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setActiveIdea(null)}>Close</Button>
         </DialogActions>
       </Dialog>
     </Box>

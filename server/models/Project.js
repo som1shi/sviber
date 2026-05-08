@@ -7,6 +7,16 @@ const taskSchema = new mongoose.Schema({
   status: { type: String, enum: ['todo', 'in_progress', 'done'], default: 'todo' },
 }, { timestamps: true });
 
+const planningSchema = new mongoose.Schema({
+  problem: { type: String, default: '' },
+  targetUser: { type: String, default: '' },
+  mvpScope: { type: String, default: '' },
+  successMetric: { type: String, default: '' },
+  launchGoal: { type: String, default: '' },
+  risks: { type: String, default: '' },
+  checklistDone: [{ type: String }],
+}, { _id: false });
+
 const projectSchema = new mongoose.Schema({
   // Draft projects may not yet be published to Community / matched to a co-founder.
   idea: { type: mongoose.Schema.Types.ObjectId, ref: 'Idea' },
@@ -31,6 +41,7 @@ const projectSchema = new mongoose.Schema({
     to:    { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     value: { type: Number, min: 1, max: 5, required: true },
   }],
+  planning: { type: planningSchema, default: () => ({}) },
 }, { timestamps: true });
 
 module.exports = mongoose.model('Project', projectSchema);

@@ -17,12 +17,10 @@ function meShape(u) {
     o.elo && typeof o.elo === 'object' && 'total' in o.elo ? o.elo.total : Number(o.elo) || 1000;
   return {
     ...o,
-    // legacy aliases kept for any callers that still use old names
     displayName: o.name,
     avatar: o.profilePic,
     github: o.githubLink || '',
     role: o.title || '',
-    // elo as number for badge displays; eloDetail has breakdown + history
     elo: eloTotal,
     eloDetail: o.elo,
   };
@@ -85,6 +83,7 @@ Reply with JSON only, no markdown:
     reasons: Array.isArray(parsed.reasons) ? parsed.reasons : [],
   };
 }
+
 
 router.get('/me', async (req, res) => {
   try {
