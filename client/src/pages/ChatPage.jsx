@@ -557,7 +557,7 @@ function getInitials(name) {
 }
 
 function canStartChat(match) {
-  return Boolean(match?._id && match?.idea && match?.users?.length === 2);
+  return Boolean(match?._id && match?.users?.length === 2);
 }
 
 function ProfileModal({ user: u, onClose, sharedProject }) {
@@ -660,7 +660,8 @@ export default function ChatPage() {
     setMessages([]);
     setChatError('');
 
-    if (state?.match) {
+    const hasInitialData = Boolean(state?.match);
+    if (hasInitialData) {
       setMatch(state.match);
       setLoadingMatch(false);
     } else {
@@ -675,7 +676,14 @@ export default function ChatPage() {
         return r.json();
       })
       .then((data) => { if (!ignore) { setMatch(data); setLoadingMatch(false); } })
-      .catch((err) => { if (!ignore) { setChatError(err.message); setLoadingMatch(false); } });
+      .catch((err) => {
+        if (!ignore) {
+          // Only block the UI with an error when we have no fallback match data.
+          // If state?.match was already set, keep showing the chat silently.
+          if (!hasInitialData) setChatError(err.message);
+          setLoadingMatch(false);
+        }
+      });
 
     return () => { ignore = true; };
   }, [matchId]); // eslint-disable-line react-hooks/exhaustive-deps
