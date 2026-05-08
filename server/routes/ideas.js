@@ -4,6 +4,20 @@ const Idea = require('../models/Idea');
 const IdeaVote = require('../models/IdeaVote');
 const { ensureAuthenticated } = require('../middleware/auth');
 
+function computeHeat(idea) {
+  const upvotes = Number(idea.upvotes || 0);
+  const downvotes = Number(idea.downvotes || 0);
+  const builders = Number(idea.builderCount || 0);
+  const views = Number(idea.viewCount || 0);
+  const comments = Array.isArray(idea.comments) ? idea.comments.length : Number(idea.commentCount || 0);
+  const elo = Math.max(0, Number(idea.eloScore || 0));
+
+  // Weighted engagement score. Uses diminishing returns so heat doesn't jump to 100 too fast.
+  const raw = (upvotes * 8) + (comments * 6) + (builders * 6) + (views * 1.5) + (elo * 0.35) - (downvotes * 4);
+  const boundedRaw = Math.max(0, raw);
+  return Math.round(100 * (1 - Math.exp(-boundedRaw / 120)));
+}
+
 router.get('/', async (req, res) => {
   try {
     const { tab = 'hot', page = 1, limit = 20 } = req.query;
@@ -15,6 +29,8 @@ router.get('/', async (req, res) => {
     if (tab === 'building') sort = { builderCount: -1 };
 
     const filter = {};
+    const topic = String(req.query.topic || '').trim();
+    if (topic) filter.topic = topic;
     if (tab === 'building') filter.status = 'building';
     if (tab === 'mine') {
       if (!userId) return res.status(401).json({ error: 'Sign in required for mine tab' });
@@ -38,9 +54,16 @@ router.get('/', async (req, res) => {
       .sort(sort)
       .skip(skip)
       .limit(Number(limit))
-      .populate('founder', 'name profilePic elo.total');
+      .populate('founder', 'name profilePic elo.total')
+      .populate('comments.user', 'name profilePic');
 
-    res.json(ideas);
+    const withHeat = ideas.map((ideaDoc) => {
+      const idea = ideaDoc.toObject();
+      idea.heatScore = computeHeat(idea);
+      return idea;
+    });
+
+    res.json(withHeat);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -48,7 +71,7 @@ router.get('/', async (req, res) => {
 
 router.post('/', ensureAuthenticated, async (req, res) => {
   try {
-    const { title, description, caption, notes, feedbackRequest, tags, projectUrl, imageUrl, imageUpload } = req.body;
+    const { title, description, caption, notes, feedbackRequest, topic, tags, projectUrl, imageUrl, imageUpload } = req.body;
     if (!title || !description) return res.status(400).json({ error: 'title and description required' });
     const normalizedTags = Array.isArray(tags)
       ? tags
@@ -63,6 +86,7 @@ router.post('/', ensureAuthenticated, async (req, res) => {
       caption: String(caption || '').trim(),
       notes: String(notes || '').trim(),
       feedbackRequest: String(feedbackRequest || '').trim(),
+      topic: String(topic || '').trim(),
       tags: normalizedTags,
       projectUrl: String(projectUrl || '').trim(),
       imageUrl: String(imageUrl || '').trim(),
@@ -79,12 +103,13 @@ router.patch('/:id', ensureAuthenticated, async (req, res) => {
     const idea = await Idea.findOne({ _id: req.params.id, founder: req.user._id });
     if (!idea) return res.status(404).json({ error: 'Idea not found' });
 
-    const { title, description, caption, notes, feedbackRequest, tags, projectUrl, imageUrl, imageUpload, status } = req.body;
+    const { title, description, caption, notes, feedbackRequest, topic, tags, projectUrl, imageUrl, imageUpload, status } = req.body;
     if (title !== undefined) idea.title = String(title).trim();
     if (description !== undefined) idea.description = String(description).trim();
     if (caption !== undefined) idea.caption = String(caption || '').trim();
     if (notes !== undefined) idea.notes = String(notes || '').trim();
     if (feedbackRequest !== undefined) idea.feedbackRequest = String(feedbackRequest || '').trim();
+    if (topic !== undefined) idea.topic = String(topic || '').trim();
     if (tags !== undefined) {
       idea.tags = Array.isArray(tags)
         ? tags.map((t) => String(t).trim()).filter(Boolean)
@@ -138,6 +163,47 @@ router.post('/:id/vote', ensureAuthenticated, async (req, res) => {
     const field = value === 1 ? 'upvotes' : 'downvotes';
     await Idea.findByIdAndUpdate(req.params.id, { $inc: { [field]: 1, eloScore: value } });
     res.status(201).json({ created: true, value });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/:id/comments', ensureAuthenticated, async (req, res) => {
+  try {
+    const text = String(req.body?.text || '').trim();
+    if (!text) return res.status(400).json({ error: 'Comment text is required' });
+
+    const idea = await Idea.findById(req.params.id);
+    if (!idea) return res.status(404).json({ error: 'Idea not found' });
+
+    idea.comments.push({ user: req.user._id, text });
+    await idea.save();
+
+    await idea.populate('comments.user', 'name profilePic');
+    const created = idea.comments[idea.comments.length - 1];
+    res.status(201).json({
+      comment: created,
+      heatScore: computeHeat(idea),
+      commentCount: idea.comments.length,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/:id/view', ensureAuthenticated, async (req, res) => {
+  try {
+    const idea = await Idea.findByIdAndUpdate(
+      req.params.id,
+      { $inc: { viewCount: 1 } },
+      { new: true }
+    );
+    if (!idea) return res.status(404).json({ error: 'Idea not found' });
+
+    res.json({
+      viewCount: idea.viewCount || 0,
+      heatScore: computeHeat(idea),
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -65,7 +65,7 @@ router.post('/:id/publish', ensureAuthenticated, async (req, res) => {
     if (!project) return res.status(404).json({ error: 'Project not found' });
     if (project.idea) {
       // Already published; allow updating the community "post metadata"
-      const { caption, notes, feedbackRequest } = req.body || {};
+      const { caption, notes, feedbackRequest, topic } = req.body || {};
       project.publishedToCommunity = true;
       await project.save();
       const already = await Idea.findOne({ _id: project.idea, founder: req.user._id });
@@ -73,11 +73,12 @@ router.post('/:id/publish', ensureAuthenticated, async (req, res) => {
       if (caption !== undefined) already.caption = String(caption || '').trim();
       if (notes !== undefined) already.notes = String(notes || '').trim();
       if (feedbackRequest !== undefined) already.feedbackRequest = String(feedbackRequest || '').trim();
+      if (topic !== undefined) already.topic = String(topic || '').trim();
       await already.save();
       return res.json(already);
     }
 
-    const { caption, notes, feedbackRequest } = req.body || {};
+    const { caption, notes, feedbackRequest, topic } = req.body || {};
     const idea = await Idea.create({
       founder: req.user._id,
       title: project.name,
@@ -85,6 +86,7 @@ router.post('/:id/publish', ensureAuthenticated, async (req, res) => {
       caption: String(caption || '').trim(),
       notes: String(notes || '').trim(),
       feedbackRequest: String(feedbackRequest || '').trim(),
+      topic: String(topic || '').trim(),
       tags: project.tags || [],
       projectUrl: project.projectUrl || '',
       imageUpload: project.imageUpload || undefined,
