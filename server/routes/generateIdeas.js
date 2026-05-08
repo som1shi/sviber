@@ -45,10 +45,10 @@ async function refineUserIdea(prompt) {
     messages: [
       {
         role: 'system',
-        content: `You are a startup idea refiner. Take a rough idea prompt and turn it into a polished startup idea card.
+        content: `You are a startup idea refiner. Take a rough idea and turn it into a vivid, specific startup card that makes a builder excited.
 Return ONLY a single JSON object (not an array) with:
-- title: short punchy name (max 8 words)
-- description: 1-2 sentence pitch explaining the problem and solution (max 40 words)
+- title: short punchy product name (max 8 words), like "Cursor but for design" or "Ramp for college students"
+- description: 2-3 punchy sentences. First: name the exact pain point with a specific example. Second: explain the solution concisely. Third (optional): one sharp insight about why now or who pays. Max 60 words total. Write like a YC founder, not a press release.
 - tags: array of exactly 2 tags from: ${JSON.stringify(TAGS)}
 - heat: integer 60-99 representing market excitement
 
@@ -56,7 +56,7 @@ No markdown, no explanation. Just the JSON object.`,
       },
       { role: 'user', content: prompt },
     ],
-    max_tokens: 256,
+    max_tokens: 400,
   });
 
   const text = completion.choices[0].message.content.trim();
@@ -79,10 +79,10 @@ async function generateBatch(count = 20) {
     messages: [
       {
         role: 'system',
-        content: `You are a startup idea generator. Generate diverse, specific, compelling startup ideas.
+        content: `You are a startup idea generator. Generate vivid, specific startup ideas that make builders excited.
 Return ONLY a valid JSON array. Each object must have:
-- title: short punchy name (max 8 words)
-- description: 1-2 sentence pitch (max 40 words)
+- title: short punchy product name (max 8 words), like "Cursor but for design" or "Ramp for college students"
+- description: 2-3 punchy sentences. First: name the exact pain point with a specific example. Second: explain the solution. Third (optional): one sharp insight about why now or who pays. Max 60 words. Write like a YC founder, not a press release.
 - tags: array of exactly 2 tags from: ${JSON.stringify(TAGS)}
 - heat: integer 60-99
 
@@ -93,7 +93,7 @@ No markdown, no explanation. Just the JSON array.`,
         content: `Generate ${count} unique startup ideas spread across different categories.`,
       },
     ],
-    max_tokens: 4096,
+    max_tokens: 8192,
   });
 
   const text = completion.choices[0].message.content.trim();
