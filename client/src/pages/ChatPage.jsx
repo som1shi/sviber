@@ -557,7 +557,7 @@ function canStartChat(match) {
   return Boolean(match?._id && match?.idea && match?.users?.length === 2);
 }
 
-function ProfileModal({ user: u, onClose }) {
+function ProfileModal({ user: u, onClose, sharedProject }) {
   if (!u) return null;
   const name = u.displayName || u.name || u.initials || 'Unknown';
   const role = u.role || u.title || 'Builder';
@@ -607,10 +607,28 @@ function ProfileModal({ user: u, onClose }) {
               target="_blank"
               rel="noopener noreferrer"
               size="small"
-              sx={{ color: '#1a1a1a', textTransform: 'none', p: 0 }}
+              sx={{ color: '#1a1a1a', textTransform: 'none', p: 0, mb: sharedProject ? 2 : 0 }}
             >
               {github}
             </Button>
+          )}
+          {sharedProject && (
+            <Box sx={{ mt: github ? 0 : 1, p: 1.5, borderRadius: 2, border: '1px solid #e5e7eb', backgroundColor: '#f9fafb' }}>
+              <Typography sx={{ fontSize: '0.7rem', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em', mb: 0.5 }}>
+                Active project together
+              </Typography>
+              <Typography sx={{ fontWeight: 700, fontSize: '0.9rem', mb: 0.25 }}>{sharedProject.name}</Typography>
+              {sharedProject.description && (
+                <Typography sx={{ fontSize: '0.8rem', color: '#6b7280', lineHeight: 1.4 }}>{sharedProject.description}</Typography>
+              )}
+              <Chip
+                label={sharedProject.status}
+                size="small"
+                sx={{ mt: 0.75, height: 18, fontSize: '0.68rem', textTransform: 'capitalize',
+                  backgroundColor: sharedProject.status === 'active' ? '#dcfce7' : '#f3f4f6',
+                  color: sharedProject.status === 'active' ? '#16a34a' : '#6b7280' }}
+              />
+            </Box>
           )}
         </Box>
       </DialogContent>
@@ -628,6 +646,7 @@ export default function ChatPage() {
   const [loadingMatch, setLoadingMatch] = useState(!state?.match);
   const [chatError, setChatError] = useState('');
   const [profileModal, setProfileModal] = useState(null);
+  const [sharedProject, setSharedProject] = useState(null);
   const [allMatches, setAllMatches] = useState([]);
 
   // On every matchId change: reset state then always fetch fresh from API.
@@ -864,7 +883,26 @@ export default function ChatPage() {
 
       {/* Chat area */}
       <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        <TopBar channel={channel} eloScore={match.score?.total ?? 0} users={topBarUsers} onUserClick={setProfileModal} onDelete={handleDelete} />
+        <TopBar
+          channel={channel}
+          eloScore={match.score?.total ?? 0}
+          users={topBarUsers}
+          onUserClick={(u) => {
+            setProfileModal(u);
+            setSharedProject(null);
+            fetch(`${API}/api/projects`, { credentials: 'include' })
+              .then((r) => r.ok ? r.json() : [])
+              .then((projects) => {
+                const uid = getUserId(u) || String(u._id);
+                const found = projects.find((p) =>
+                  p.contributors?.some((c) => String(c.user?._id || c.user) === uid)
+                );
+                setSharedProject(found || null);
+              })
+              .catch(() => {});
+          }}
+          onDelete={handleDelete}
+        />
 
         <Box sx={{ flex: 1, overflowY: 'auto', py: 2 }}>
           {messages.map((msg) => {
@@ -881,7 +919,7 @@ export default function ChatPage() {
         <MessageInput key={matchId} channel={channel} onSend={handleSend} />
       </Box>
 
-      {profileModal && <ProfileModal user={profileModal} onClose={() => setProfileModal(null)} />}
+      {profileModal && <ProfileModal user={profileModal} onClose={() => { setProfileModal(null); setSharedProject(null); }} sharedProject={sharedProject} />}
     </Box>
   );
 }
