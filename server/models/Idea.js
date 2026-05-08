@@ -1,7 +1,8 @@
 const mongoose = require('mongoose');
 
 const ideaSchema = new mongoose.Schema({
-  founder: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  founder: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: false },
+  isAiGenerated: { type: Boolean, default: false },
   title: { type: String, required: true },
   description: { type: String, required: true },
   // Community post metadata for a project share

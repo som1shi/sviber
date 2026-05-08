@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Box, Typography, IconButton, Chip, Button } from '@mui/material';
+import { Box, Typography, IconButton, Chip, Button, Dialog, DialogTitle, DialogContent, DialogActions, TextField } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import FavoriteIcon from '@mui/icons-material/Favorite';
 import BookmarkIcon from '@mui/icons-material/Bookmark';
+import AddIcon from '@mui/icons-material/Add';
 import { useAuth } from '../context/AuthContext';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3001';
@@ -12,14 +13,18 @@ const STORAGE_KEY = 'sviber_swiped_ids';
 
 function getSwipedIds() {
   try { return new Set(JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')); }
-  catch { return new Set(); }
+  catch {
+    return new Set();
+  }
 }
 function saveSwipedId(id) {
   try {
     const ids = getSwipedIds();
     ids.add(String(id));
     localStorage.setItem(STORAGE_KEY, JSON.stringify([...ids]));
-  } catch {}
+  } catch {
+    // Local swipe cache is best effort only.
+  }
 }
 
 const DEMO_IDEAS = [
@@ -145,20 +150,43 @@ function SwipeCard({ idea, onSwipe }) {
 
         {/* Idea stats */}
         <Box sx={{ pt: 2, borderTop: '1px solid #f3f4f6' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1.5 }}>
-            <Typography variant="caption" sx={{ color: '#6b7280', width: 90, flexShrink: 0 }}>Heat</Typography>
-            <Box sx={{ flex: 1, height: 8, borderRadius: 4, backgroundColor: '#f3f4f6', overflow: 'hidden' }}>
-              <Box sx={{ width: `${idea.heat}%`, height: '100%', borderRadius: 4, backgroundColor: '#f59e0b' }} />
+          {[
+            {
+              label: 'Heat',
+              value: idea.heat,
+              display: `${idea.heat}%`,
+              color: '#f59e0b',
+              tooltip: 'Market excitement score',
+            },
+            {
+              label: 'Builders',
+              value: Math.min(100, idea.builderCount * 5),
+              display: idea.builderCount,
+              color: '#3b82f6',
+              tooltip: 'People who swiped right',
+            },
+            {
+              label: 'Demand',
+              value: (() => {
+                const total = idea.upvotes + idea.downvotes;
+                return total === 0 ? 50 : Math.round((idea.upvotes / total) * 100);
+              })(),
+              display: (() => {
+                const total = idea.upvotes + idea.downvotes;
+                return total === 0 ? '—' : `${Math.round((idea.upvotes / total) * 100)}%`;
+              })(),
+              color: '#10b981',
+              tooltip: 'Upvote ratio from community',
+            },
+          ].map(({ label, value, display, color }) => (
+            <Box key={label} sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1.5 }}>
+              <Typography variant="caption" sx={{ color: '#6b7280', width: 70, flexShrink: 0 }}>{label}</Typography>
+              <Box sx={{ flex: 1, height: 8, borderRadius: 4, backgroundColor: '#f3f4f6', overflow: 'hidden' }}>
+                <Box sx={{ width: `${value}%`, height: '100%', borderRadius: 4, backgroundColor: color, transition: 'width 0.4s ease' }} />
+              </Box>
+              <Typography variant="caption" fontWeight={700} sx={{ width: 36, textAlign: 'right' }}>{display}</Typography>
             </Box>
-            <Typography variant="caption" fontWeight={700} sx={{ width: 36, textAlign: 'right' }}>{idea.heat}%</Typography>
-          </Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1.5 }}>
-            <Typography variant="caption" sx={{ color: '#6b7280', width: 90, flexShrink: 0 }}>Interest</Typography>
-            <Box sx={{ flex: 1, height: 8, borderRadius: 4, backgroundColor: '#f3f4f6', overflow: 'hidden' }}>
-              <Box sx={{ width: `${Math.min(100, idea.builderCount * 8)}%`, height: '100%', borderRadius: 4, backgroundColor: '#3b82f6' }} />
-            </Box>
-            <Typography variant="caption" fontWeight={700} sx={{ width: 36, textAlign: 'right' }}>{idea.builderCount}</Typography>
-          </Box>
+          ))}
 
           <Box sx={{ mt: 2, p: 1.5, borderRadius: 2, backgroundColor: '#f9fafb', border: '1px solid #e5e7eb' }}>
             <Typography variant="caption" sx={{ color: '#6b7280' }}>
@@ -178,6 +206,9 @@ export default function SwipePage() {
   const [current, setCurrent] = useState(0);
   const [toast, setToast] = useState('');
   const [loading, setLoading] = useState(true);
+  const [submitOpen, setSubmitOpen] = useState(false);
+  const [submitPrompt, setSubmitPrompt] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -197,7 +228,8 @@ export default function SwipePage() {
                 tags: idea.tags || [],
                 heat: idea.eloScore || 80,
                 builderCount: idea.builderCount || 0,
-                matchScore: 0,
+                upvotes: idea.upvotes || 0,
+                downvotes: idea.downvotes || 0,
                 isPersisted: true,
               }));
             setIdeas(filtered.length > 0 ? filtered : DEMO_IDEAS.filter(d => !swiped.has(d.id)));
@@ -205,7 +237,9 @@ export default function SwipePage() {
             return;
           }
         }
-      } catch {}
+      } catch {
+        // Fall back to demo ideas when the API is unavailable.
+      }
       setIdeas(DEMO_IDEAS.filter(d => !swiped.has(d.id)));
       setLoading(false);
     }
@@ -217,26 +251,50 @@ export default function SwipePage() {
     setTimeout(() => setToast(''), 3000);
   };
 
+  const refillIfLow = async () => {
+    const remaining = ideas.length - current;
+    if (remaining > 5) return;
+    try {
+      await fetch(`${API}/api/generate-ideas`, { method: 'POST', credentials: 'include' });
+      const swiped = getSwipedIds();
+      const res = await fetch(`${API}/api/ideas?tab=hot&limit=100`, { credentials: 'include' });
+      if (!res.ok) return;
+      const data = await res.json();
+      const currentIds = new Set(ideas.map(i => String(i.id)));
+      const fresh = data
+        .filter((idea) => !swiped.has(String(idea._id)) && !currentIds.has(String(idea._id)))
+        .map((idea) => ({
+          id: idea._id,
+          title: idea.title,
+          pitch: idea.description,
+          tags: idea.tags || [],
+          heat: idea.eloScore || 80,
+          builderCount: idea.builderCount || 0,
+          isPersisted: true,
+        }));
+      if (fresh.length > 0) {
+        setIdeas((prev) => [...prev, ...fresh]);
+      }
+    } catch {
+      // Refill is opportunistic; the current deck remains usable.
+    }
+  };
+
   const handleSwipe = async (direction) => {
     const swipedIdea = ideas[current];
     if (!swipedIdea) return;
 
     saveSwipedId(swipedIdea.id);
     setCurrent((prev) => prev + 1);
+    refillIfLow();
 
-    if (direction === 'up') {
-      showToast('Saved for later');
+    if (direction === 'up') showToast('Saved for later');
+    if (direction === 'left') showToast('Passed');
+    if (direction === 'right') showToast('Looking for co-founders on this idea...');
+
+    if (!swipedIdea.isPersisted) {
       return;
     }
-    if (direction === 'left') {
-      showToast('Passed');
-      return;
-    }
-
-    // right swipe
-    showToast('Looking for co-founders on this idea...');
-
-    if (!swipedIdea.isPersisted) return;
 
     try {
       const res = await fetch(`${API}/api/swipe`, {
@@ -253,7 +311,44 @@ export default function SwipePage() {
         showToast(`Matched with ${partner?.displayName || partner?.name || 'a founder'}! Opening chat...`);
         setTimeout(() => navigate(`/app/matches/${firstMatch._id}`, { state: { match: firstMatch } }), 1500);
       }
-    } catch {}
+    } catch {
+      // Swipe persistence failure should not block local deck progress.
+    }
+  };
+
+  const handleSubmitIdea = async () => {
+    if (!submitPrompt.trim()) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch(`${API}/api/generate-ideas`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ prompt: submitPrompt.trim() }),
+      });
+      const data = await res.json();
+      if (res.ok && data.ideas?.length > 0) {
+        const newIdea = data.ideas[0];
+        setIdeas((prev) => [...prev, {
+          id: newIdea._id,
+          title: newIdea.title,
+          pitch: newIdea.description,
+          tags: newIdea.tags || [],
+          heat: newIdea.eloScore || 80,
+          builderCount: 0,
+          isPersisted: true,
+        }]);
+        showToast('Your idea was added to the deck!');
+        setSubmitOpen(false);
+        setSubmitPrompt('');
+      } else {
+        showToast('Could not refine idea — try again');
+      }
+    } catch {
+      showToast('Something went wrong');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const idea = ideas[current];
@@ -327,6 +422,44 @@ export default function SwipePage() {
       <Typography variant="caption" sx={{ color: '#9ca3af' }}>
         {Math.max(0, ideas.length - current)} idea{ideas.length - current !== 1 ? 's' : ''} left
       </Typography>
+
+      <Button
+        startIcon={<AddIcon />}
+        onClick={() => setSubmitOpen(true)}
+        sx={{ textTransform: 'none', color: '#6b7280', fontSize: '0.85rem' }}
+      >
+        Submit your own idea
+      </Button>
+
+      <Dialog open={submitOpen} onClose={() => setSubmitOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700 }}>Submit an idea</DialogTitle>
+        <DialogContent>
+          <Typography sx={{ color: '#6b7280', mb: 2, fontSize: '0.9rem' }}>
+            Describe your rough idea — Sviber will turn it into a polished startup card and add it to the shared deck.
+          </Typography>
+          <TextField
+            autoFocus
+            fullWidth
+            multiline
+            minRows={3}
+            placeholder="e.g. an app that helps college students find study partners based on their schedule and learning style"
+            value={submitPrompt}
+            onChange={(e) => setSubmitPrompt(e.target.value)}
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setSubmitOpen(false)} sx={{ textTransform: 'none', color: '#6b7280' }}>Cancel</Button>
+          <Button
+            variant="contained"
+            disabled={!submitPrompt.trim() || submitting}
+            onClick={handleSubmitIdea}
+            sx={{ textTransform: 'none', backgroundColor: '#1a1a1a', '&:hover': { backgroundColor: '#374151' }, borderRadius: 2 }}
+          >
+            {submitting ? 'Refining...' : 'Submit'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
