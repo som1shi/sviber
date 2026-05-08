@@ -26,6 +26,7 @@ router.post('/draft', ensureAuthenticated, async (req, res) => {
       projectUrl,
       imageUpload,
       imageUrl,
+      planning,
     } = req.body;
 
     if (!title) return res.status(400).json({ error: 'title required' });
@@ -44,6 +45,17 @@ router.post('/draft', ensureAuthenticated, async (req, res) => {
       projectUrl: projectUrl ? String(projectUrl).trim() : '',
       imageUpload: imageUpload || undefined,
       imageUrl: imageUrl ? String(imageUrl).trim() : '',
+      planning: {
+        problem: String(planning?.problem || '').trim(),
+        targetUser: String(planning?.targetUser || '').trim(),
+        mvpScope: String(planning?.mvpScope || '').trim(),
+        successMetric: String(planning?.successMetric || '').trim(),
+        launchGoal: String(planning?.launchGoal || '').trim(),
+        risks: String(planning?.risks || '').trim(),
+        checklistDone: Array.isArray(planning?.checklistDone)
+          ? planning.checklistDone.map((item) => String(item || '').trim()).filter(Boolean)
+          : [],
+      },
       contributors: [{ user: req.user._id }],
       publishedToCommunity: false,
     });
@@ -119,6 +131,49 @@ router.post('/', ensureAuthenticated, async (req, res) => {
       contributors: [{ user: req.user._id }],
     });
     res.status(201).json(project);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch('/:id', ensureAuthenticated, async (req, res) => {
+  try {
+    const { title, description, tags, projectUrl, imageUpload, imageUrl, planning } = req.body || {};
+    const project = await Project.findOne({
+      _id: req.params.id,
+      'contributors.user': req.user._id,
+    });
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+
+    if (title !== undefined) project.name = String(title || '').trim();
+    if (description !== undefined) project.description = String(description || '').trim();
+    if (tags !== undefined) {
+      project.tags = Array.isArray(tags)
+        ? tags.map((t) => String(t).trim()).filter(Boolean)
+        : String(tags || '')
+          .split(',')
+          .map((t) => t.trim())
+          .filter(Boolean);
+    }
+    if (projectUrl !== undefined) project.projectUrl = String(projectUrl || '').trim();
+    if (imageUpload !== undefined) project.imageUpload = imageUpload || undefined;
+    if (imageUrl !== undefined) project.imageUrl = String(imageUrl || '').trim();
+    if (planning !== undefined) {
+      project.planning = {
+        problem: String(planning?.problem || '').trim(),
+        targetUser: String(planning?.targetUser || '').trim(),
+        mvpScope: String(planning?.mvpScope || '').trim(),
+        successMetric: String(planning?.successMetric || '').trim(),
+        launchGoal: String(planning?.launchGoal || '').trim(),
+        risks: String(planning?.risks || '').trim(),
+        checklistDone: Array.isArray(planning?.checklistDone)
+          ? planning.checklistDone.map((item) => String(item || '').trim()).filter(Boolean)
+          : [],
+      };
+    }
+
+    await project.save();
+    res.json(project);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

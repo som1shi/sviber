@@ -206,6 +206,25 @@ function IdeaCard({ idea, onUpvote, onDownvote, onToggleSave, onToggleBuild, onO
           ))}
         </Box>
 
+        {idea.imageUrl && (
+          <Box sx={{ mb: 2 }}>
+            <Box
+              component="img"
+              src={idea.imageUrl}
+              alt={idea.title}
+              sx={{
+                width: { xs: '55%', md: '25%' },
+                maxHeight: 90,
+                objectFit: 'cover',
+                borderRadius: 2,
+                border: '1px solid #e5e7eb',
+                backgroundColor: '#f9fafb',
+                display: 'block',
+              }}
+            />
+          </Box>
+        )}
+
         <Divider sx={{ mb: 2 }} />
 
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -823,23 +842,6 @@ export default function CommunityPage() {
                 onToggleBuild={handleToggleBuild}
                 onOpen={openIdea}
               />
-              {idea.imageUrl && (
-                <Box sx={{ mt: -1.5, mb: 1, px: 2 }}>
-                  <Box
-                    component="img"
-                    src={idea.imageUrl}
-                    alt={idea.title}
-                    sx={{
-                      width: '100%',
-                      maxHeight: 320,
-                      objectFit: 'cover',
-                      borderRadius: 2,
-                      border: '1px solid #e5e7eb',
-                      backgroundColor: '#f9fafb',
-                    }}
-                  />
-                </Box>
-              )}
               {(idea.projectUrl || String(idea.founderId) === String(user?._id || user?.id)) && (
                 <Box sx={{ mt: -0.5, mb: 2.5, px: 2, display: 'flex', gap: 1 }}>
                   {idea.projectUrl && (
@@ -1022,7 +1024,7 @@ export default function CommunityPage() {
                     alt={activeIdea.title}
                     sx={{
                       width: '100%',
-                      maxHeight: { xs: 320, md: 560 },
+                      maxHeight: { xs: 260, md: 360 },
                       objectFit: 'cover',
                       borderRadius: 2,
                       border: '1px solid #e5e7eb',
