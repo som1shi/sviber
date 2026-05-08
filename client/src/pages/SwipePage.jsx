@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Box, Typography, IconButton, Chip, Button } from '@mui/material';
+import { Box, Typography, IconButton, Chip, Button, Dialog, DialogTitle, DialogContent, DialogActions, TextField } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import FavoriteIcon from '@mui/icons-material/Favorite';
 import BookmarkIcon from '@mui/icons-material/Bookmark';
+import AddIcon from '@mui/icons-material/Add';
 import { useAuth } from '../context/AuthContext';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3001';
@@ -12,14 +13,18 @@ const STORAGE_KEY = 'sviber_swiped_ids';
 
 function getSwipedIds() {
   try { return new Set(JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')); }
-  catch { return new Set(); }
+  catch {
+    return new Set();
+  }
 }
 function saveSwipedId(id) {
   try {
     const ids = getSwipedIds();
     ids.add(String(id));
     localStorage.setItem(STORAGE_KEY, JSON.stringify([...ids]));
-  } catch {}
+  } catch {
+    // Local swipe cache is best effort only.
+  }
 }
 
 const DEMO_IDEAS = [
@@ -178,6 +183,9 @@ export default function SwipePage() {
   const [current, setCurrent] = useState(0);
   const [toast, setToast] = useState('');
   const [loading, setLoading] = useState(true);
+  const [submitOpen, setSubmitOpen] = useState(false);
+  const [submitPrompt, setSubmitPrompt] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -204,7 +212,9 @@ export default function SwipePage() {
             return;
           }
         }
-      } catch {}
+      } catch {
+        // Fall back to demo ideas when the API is unavailable.
+      }
       setIdeas(DEMO_IDEAS.filter(d => !swiped.has(d.id)));
       setLoading(false);
     }
@@ -240,7 +250,9 @@ export default function SwipePage() {
       if (fresh.length > 0) {
         setIdeas((prev) => [...prev, ...fresh]);
       }
-    } catch {}
+    } catch {
+      // Refill is opportunistic; the current deck remains usable.
+    }
   };
 
   const handleSwipe = async (direction) => {
@@ -251,19 +263,13 @@ export default function SwipePage() {
     setCurrent((prev) => prev + 1);
     refillIfLow();
 
-    if (direction === 'up') {
-      showToast('Saved for later');
+    if (direction === 'up') showToast('Saved for later');
+    if (direction === 'left') showToast('Passed');
+    if (direction === 'right') showToast('Looking for co-founders on this idea...');
+
+    if (!swipedIdea.isPersisted) {
       return;
     }
-    if (direction === 'left') {
-      showToast('Passed');
-      return;
-    }
-
-    // right swipe
-    showToast('Looking for co-founders on this idea...');
-
-    if (!swipedIdea.isPersisted) return;
 
     try {
       const res = await fetch(`${API}/api/swipe`, {
@@ -274,12 +280,49 @@ export default function SwipePage() {
       });
       if (!res.ok) return;
       const data = await res.json();
-      if (data.match?._id) {
+      if (direction === 'right' && data.match?._id) {
         const partner = data.match.users?.find(u => String(u._id) !== String(user?._id));
         showToast(`Matched with ${partner?.displayName || 'a founder'}! Opening chat...`);
         setTimeout(() => navigate(`/app/matches/${data.match._id}`, { state: { match: data.match } }), 1500);
       }
-    } catch {}
+    } catch {
+      // Swipe persistence failure should not block local deck progress.
+    }
+  };
+
+  const handleSubmitIdea = async () => {
+    if (!submitPrompt.trim()) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch(`${API}/api/generate-ideas`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ prompt: submitPrompt.trim() }),
+      });
+      const data = await res.json();
+      if (res.ok && data.ideas?.length > 0) {
+        const newIdea = data.ideas[0];
+        setIdeas((prev) => [...prev, {
+          id: newIdea._id,
+          title: newIdea.title,
+          pitch: newIdea.description,
+          tags: newIdea.tags || [],
+          heat: newIdea.eloScore || 80,
+          builderCount: 0,
+          isPersisted: true,
+        }]);
+        showToast('Your idea was added to the deck!');
+        setSubmitOpen(false);
+        setSubmitPrompt('');
+      } else {
+        showToast('Could not refine idea — try again');
+      }
+    } catch {
+      showToast('Something went wrong');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const idea = ideas[current];
@@ -353,6 +396,44 @@ export default function SwipePage() {
       <Typography variant="caption" sx={{ color: '#9ca3af' }}>
         {Math.max(0, ideas.length - current)} idea{ideas.length - current !== 1 ? 's' : ''} left
       </Typography>
+
+      <Button
+        startIcon={<AddIcon />}
+        onClick={() => setSubmitOpen(true)}
+        sx={{ textTransform: 'none', color: '#6b7280', fontSize: '0.85rem' }}
+      >
+        Submit your own idea
+      </Button>
+
+      <Dialog open={submitOpen} onClose={() => setSubmitOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700 }}>Submit an idea</DialogTitle>
+        <DialogContent>
+          <Typography sx={{ color: '#6b7280', mb: 2, fontSize: '0.9rem' }}>
+            Describe your rough idea — Groq will turn it into a polished startup card and add it to the shared deck.
+          </Typography>
+          <TextField
+            autoFocus
+            fullWidth
+            multiline
+            minRows={3}
+            placeholder="e.g. an app that helps college students find study partners based on their schedule and learning style"
+            value={submitPrompt}
+            onChange={(e) => setSubmitPrompt(e.target.value)}
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setSubmitOpen(false)} sx={{ textTransform: 'none', color: '#6b7280' }}>Cancel</Button>
+          <Button
+            variant="contained"
+            disabled={!submitPrompt.trim() || submitting}
+            onClick={handleSubmitIdea}
+            sx={{ textTransform: 'none', backgroundColor: '#1a1a1a', '&:hover': { backgroundColor: '#374151' }, borderRadius: 2 }}
+          >
+            {submitting ? 'Refining...' : 'Submit'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

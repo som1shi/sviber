@@ -1,41 +1,20 @@
 const express = require('express');
 const router = express.Router();
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const Groq = require('groq-sdk');
 const Idea = require('../models/Idea');
 
-const CATEGORIES = [
-  'AI tools for developers', 'fintech for Gen Z', 'edtech and learning',
-  'creator economy', 'B2B SaaS', 'climate tech', 'health and wellness',
-  'marketplace ideas', 'consumer social', 'devtools and infrastructure',
-];
+const TAGS = ['AI', 'DevTools', 'Fintech', 'Consumer', 'EdTech', 'Creator', 'B2B', 'SaaS', 'Climate', 'Health', 'Marketplace', 'Social', 'API'];
 
-const TAGS_MAP = {
-  'AI tools for developers': ['AI', 'DevTools'],
-  'fintech for Gen Z': ['Fintech', 'Consumer'],
-  'edtech and learning': ['EdTech', 'AI'],
-  'creator economy': ['Creator', 'Consumer'],
-  'B2B SaaS': ['B2B', 'SaaS'],
-  'climate tech': ['Climate', 'B2B'],
-  'health and wellness': ['Health', 'Consumer'],
-  'marketplace ideas': ['Marketplace', 'B2B'],
-  'consumer social': ['Social', 'Consumer'],
-  'devtools and infrastructure': ['DevTools', 'API'],
-};
-
-function getGeminiApiKey() {
-  return process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+function getGroq() {
+  return new Groq({ apiKey: process.env.GROQ_API_KEY });
 }
 
-function getGeminiModelName() {
-  return process.env.GEMINI_MODEL || 'gemini-2.0-flash';
-}
-
-function normalizeIdeas(rawIdeas) {
-  if (!Array.isArray(rawIdeas)) {
-    throw new Error('Gemini returned JSON, but it was not an array');
-  }
-
-  return rawIdeas
+function parseIdeas(text) {
+  const match = text.match(/\[[\s\S]*\]/);
+  if (!match) throw new Error('No JSON array in response');
+  const raw = JSON.parse(match[0]);
+  if (!Array.isArray(raw)) throw new Error('Response was not an array');
+  return raw
     .map((idea) => ({
       title: String(idea.title || '').trim(),
       description: String(idea.description || '').trim(),
@@ -45,107 +24,122 @@ function normalizeIdeas(rawIdeas) {
     .filter((idea) => idea.title && idea.description);
 }
 
-async function saveGeneratedIdeas(ideas) {
-  if (!ideas.length) throw new Error('No usable ideas to save');
-
-  const titles = ideas.map((idea) => idea.title);
-  const existingTitles = new Set(
+async function saveIdeas(ideas) {
+  if (!ideas.length) return [];
+  const titles = ideas.map((i) => i.title);
+  const existing = new Set(
     (await Idea.find({ title: { $in: titles } }).distinct('title')).map((t) => t.toLowerCase())
   );
-
   const docs = ideas
-    .filter((idea) => !existingTitles.has(idea.title.toLowerCase()))
-    .map((idea) => ({
-      title: idea.title,
-      description: idea.description,
-      tags: idea.tags,
-      eloScore: idea.heat,
-      isAiGenerated: true,
-    }));
-
+    .filter((i) => !existing.has(i.title.toLowerCase()))
+    .map((i) => ({ title: i.title, description: i.description, tags: i.tags, eloScore: i.heat, isAiGenerated: true }));
   if (!docs.length) return [];
   return Idea.insertMany(docs, { ordered: false });
 }
 
-async function generateBatch(count = 20) {
-  const apiKey = getGeminiApiKey();
-  if (!apiKey) {
-    throw new Error('GEMINI_API_KEY not set. Add it to server/.env or your host environment.');
-  }
-
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: getGeminiModelName() });
-
-  const allTags = [...new Set(Object.values(TAGS_MAP).flat())];
-
-  const prompt = `Generate ${count} unique, specific, and compelling startup ideas. Spread them across these categories: ${CATEGORIES.join(', ')}.
-
-For each idea return a JSON object with:
+// Refine a rough user-submitted prompt into a polished idea card
+async function refineUserIdea(prompt) {
+  const groq = getGroq();
+  const completion = await groq.chat.completions.create({
+    model: 'llama-3.3-70b-versatile',
+    messages: [
+      {
+        role: 'system',
+        content: `You are a startup idea refiner. Take a rough idea prompt and turn it into a polished startup idea card.
+Return ONLY a single JSON object (not an array) with:
 - title: short punchy name (max 8 words)
 - description: 1-2 sentence pitch explaining the problem and solution (max 40 words)
-- tags: array of exactly 2 tags chosen from: ${JSON.stringify(allTags)}
+- tags: array of exactly 2 tags from: ${JSON.stringify(TAGS)}
 - heat: integer 60-99 representing market excitement
 
-Return ONLY a valid JSON array, no markdown, no explanation. Example format:
-[{"title":"...","description":"...","tags":["AI","DevTools"],"heat":85}]`;
+No markdown, no explanation. Just the JSON object.`,
+      },
+      { role: 'user', content: prompt },
+    ],
+    max_tokens: 256,
+  });
 
-  const result = await model.generateContent(prompt);
-  const text = result.response.text().trim();
-
-  const jsonMatch = text.match(/\[[\s\S]*\]/);
-  if (!jsonMatch) throw new Error('No JSON array found in response');
-
-  return normalizeIdeas(JSON.parse(jsonMatch[0]));
+  const text = completion.choices[0].message.content.trim();
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error('Could not parse idea from response');
+  const raw = JSON.parse(jsonMatch[0]);
+  return {
+    title: String(raw.title || '').trim(),
+    description: String(raw.description || '').trim(),
+    tags: Array.isArray(raw.tags) ? raw.tags.slice(0, 2).map(String) : [],
+    heat: Math.max(60, Math.min(99, Number(raw.heat) || 75)),
+  };
 }
 
-router.get('/status', (req, res) => {
-  res.json({
-    configured: Boolean(getGeminiApiKey()),
-    keyName: process.env.GEMINI_API_KEY ? 'GEMINI_API_KEY' : process.env.GOOGLE_API_KEY ? 'GOOGLE_API_KEY' : null,
-    model: getGeminiModelName(),
+// Generate a batch of ideas autonomously
+async function generateBatch(count = 20) {
+  const groq = getGroq();
+  const completion = await groq.chat.completions.create({
+    model: 'llama-3.3-70b-versatile',
+    messages: [
+      {
+        role: 'system',
+        content: `You are a startup idea generator. Generate diverse, specific, compelling startup ideas.
+Return ONLY a valid JSON array. Each object must have:
+- title: short punchy name (max 8 words)
+- description: 1-2 sentence pitch (max 40 words)
+- tags: array of exactly 2 tags from: ${JSON.stringify(TAGS)}
+- heat: integer 60-99
+
+No markdown, no explanation. Just the JSON array.`,
+      },
+      {
+        role: 'user',
+        content: `Generate ${count} unique startup ideas spread across different categories.`,
+      },
+    ],
+    max_tokens: 4096,
   });
-});
 
-// POST /api/generate-ideas - generate and save a batch
-// Add ?force=true to bypass the daily seed check and run it immediately
+  const text = completion.choices[0].message.content.trim();
+  return parseIdeas(text);
+}
+
+// POST /api/generate-ideas — user submits a rough prompt, Groq refines it into a card
 router.post('/', async (req, res) => {
+  if (!process.env.GROQ_API_KEY) {
+    return res.status(500).json({ error: 'GROQ_API_KEY not set' });
+  }
   try {
-    if (req.query.force === 'true') {
-      res.json({ message: 'Force seed started - check server logs' });
-      return autoSeed(true);
-    }
-    const count = Math.min(Number(req.query.count) || 10, 20);
-    const ideas = await generateBatch(count);
-    const saved = await saveGeneratedIdeas(ideas);
+    const { prompt } = req.body;
 
-    res.json({ generated: saved.length, ideas: saved });
+    if (prompt?.trim()) {
+      // User-submitted idea — refine it
+      const refined = await refineUserIdea(prompt.trim());
+      const saved = await saveIdeas([refined]);
+      return res.json({ generated: saved.length, ideas: saved, source: 'user' });
+    }
+
+    // No prompt — generate a fresh batch
+    const ideas = await generateBatch(20);
+    const saved = await saveIdeas(ideas);
+    res.json({ generated: saved.length, ideas: saved, source: 'auto' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Runs once per day on server start.
-// Generates 10 ideas across all 10 categories = ~100 fresh ideas per day.
-// Ideas accumulate in the DB, so all users share the same growing pool.
-async function autoSeed(force = false) {
-  if (!getGeminiApiKey()) {
-    console.warn('Skipping Gemini seed: GEMINI_API_KEY not set.');
-    return;
-  }
+// Auto-seed on server start if DB is low
+async function autoSeed() {
+  if (!process.env.GROQ_API_KEY) return;
   try {
     const count = await Idea.countDocuments();
-    if (!force && count >= 50) {
-      console.log(`DB has ${count} ideas - skipping seed.`);
+    if (count >= 50) {
+      console.log(`DB has ${count} ideas — skipping seed.`);
       return;
     }
-
-    console.log(`DB has ${count} ideas - generating 20 more with Gemini...`);
+    console.log(`DB has ${count} ideas — generating with Groq...`);
     const ideas = await generateBatch(20);
-    const saved = await saveGeneratedIdeas(ideas);
-    console.log(`Seed complete - ${saved.length} new ideas added. DB now has ${count + saved.length}.`);
+    const saved = await saveIdeas(ideas);
+    console.log(`Seeded ${saved.length} ideas. DB now has ${count + saved.length}.`);
   } catch (err) {
     console.error('autoSeed failed:', err.message);
   }
 }
 
-module.exports = { router, autoSeed, generateBatch };
+module.exports = { router, autoSeed };
