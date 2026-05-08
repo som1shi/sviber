@@ -150,20 +150,43 @@ function SwipeCard({ idea, onSwipe }) {
 
         {/* Idea stats */}
         <Box sx={{ pt: 2, borderTop: '1px solid #f3f4f6' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1.5 }}>
-            <Typography variant="caption" sx={{ color: '#6b7280', width: 90, flexShrink: 0 }}>Heat</Typography>
-            <Box sx={{ flex: 1, height: 8, borderRadius: 4, backgroundColor: '#f3f4f6', overflow: 'hidden' }}>
-              <Box sx={{ width: `${idea.heat}%`, height: '100%', borderRadius: 4, backgroundColor: '#f59e0b' }} />
+          {[
+            {
+              label: 'Heat',
+              value: idea.heat,
+              display: `${idea.heat}%`,
+              color: '#f59e0b',
+              tooltip: 'Market excitement score',
+            },
+            {
+              label: 'Builders',
+              value: Math.min(100, idea.builderCount * 5),
+              display: idea.builderCount,
+              color: '#3b82f6',
+              tooltip: 'People who swiped right',
+            },
+            {
+              label: 'Demand',
+              value: (() => {
+                const total = idea.upvotes + idea.downvotes;
+                return total === 0 ? 50 : Math.round((idea.upvotes / total) * 100);
+              })(),
+              display: (() => {
+                const total = idea.upvotes + idea.downvotes;
+                return total === 0 ? '—' : `${Math.round((idea.upvotes / total) * 100)}%`;
+              })(),
+              color: '#10b981',
+              tooltip: 'Upvote ratio from community',
+            },
+          ].map(({ label, value, display, color }) => (
+            <Box key={label} sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1.5 }}>
+              <Typography variant="caption" sx={{ color: '#6b7280', width: 70, flexShrink: 0 }}>{label}</Typography>
+              <Box sx={{ flex: 1, height: 8, borderRadius: 4, backgroundColor: '#f3f4f6', overflow: 'hidden' }}>
+                <Box sx={{ width: `${value}%`, height: '100%', borderRadius: 4, backgroundColor: color, transition: 'width 0.4s ease' }} />
+              </Box>
+              <Typography variant="caption" fontWeight={700} sx={{ width: 36, textAlign: 'right' }}>{display}</Typography>
             </Box>
-            <Typography variant="caption" fontWeight={700} sx={{ width: 36, textAlign: 'right' }}>{idea.heat}%</Typography>
-          </Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1.5 }}>
-            <Typography variant="caption" sx={{ color: '#6b7280', width: 90, flexShrink: 0 }}>Interest</Typography>
-            <Box sx={{ flex: 1, height: 8, borderRadius: 4, backgroundColor: '#f3f4f6', overflow: 'hidden' }}>
-              <Box sx={{ width: `${Math.min(100, idea.builderCount * 8)}%`, height: '100%', borderRadius: 4, backgroundColor: '#3b82f6' }} />
-            </Box>
-            <Typography variant="caption" fontWeight={700} sx={{ width: 36, textAlign: 'right' }}>{idea.builderCount}</Typography>
-          </Box>
+          ))}
 
           <Box sx={{ mt: 2, p: 1.5, borderRadius: 2, backgroundColor: '#f9fafb', border: '1px solid #e5e7eb' }}>
             <Typography variant="caption" sx={{ color: '#6b7280' }}>
@@ -205,6 +228,8 @@ export default function SwipePage() {
                 tags: idea.tags || [],
                 heat: idea.eloScore || 80,
                 builderCount: idea.builderCount || 0,
+                upvotes: idea.upvotes || 0,
+                downvotes: idea.downvotes || 0,
                 isPersisted: true,
               }));
             setIdeas(filtered.length > 0 ? filtered : DEMO_IDEAS.filter(d => !swiped.has(d.id)));
