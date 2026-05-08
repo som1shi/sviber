@@ -99,7 +99,7 @@ const roleColors = {
   Hacker: '#9333ea',
 };
 
-function IdeaCard({ idea, onUpvote, onToggleSave, onToggleBuild }) {
+function IdeaCard({ idea, onUpvote, onDownvote, onToggleSave, onToggleBuild }) {
   return (
     <Card
       elevation={0}
@@ -187,13 +187,21 @@ function IdeaCard({ idea, onUpvote, onToggleSave, onToggleBuild }) {
 
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-            <IconButton size="small" onClick={() => onUpvote(idea.id)} sx={{ p: 0.5 }}>
+            <IconButton
+              size="small"
+              onClick={() => onUpvote(idea.id)}
+              sx={{ p: 0.5, color: idea.userVote === 1 ? '#7C5CFC' : 'inherit' }}
+            >
               <KeyboardArrowUp sx={{ fontSize: 18 }} />
             </IconButton>
             <Typography sx={{ fontWeight: 700, fontSize: 13, minWidth: 24, textAlign: 'center' }}>
               {idea.upvotes}
             </Typography>
-            <IconButton size="small" sx={{ p: 0.5 }}>
+            <IconButton
+              size="small"
+              onClick={() => onDownvote(idea.id)}
+              sx={{ p: 0.5, color: idea.userVote === -1 ? '#ef4444' : 'inherit' }}
+            >
               <KeyboardArrowDown sx={{ fontSize: 18 }} />
             </IconButton>
           </Box>
@@ -295,6 +303,7 @@ export default function CommunityPage() {
         heat: idea.eloScore || 0,
         upvotes: idea.upvotes || 0,
         downvotes: idea.downvotes || 0,
+        userVote: 0,
         builders: idea.builderCount || 0,
         tags: idea.tags || [],
         projectUrl: idea.projectUrl || '',
@@ -334,9 +343,40 @@ export default function CommunityPage() {
     }
   };
 
-  const handleUpvote = (id) => {
-    setIdeas(prev => prev.map(i => i.id === id ? { ...i, upvotes: i.upvotes + 1 } : i));
+  const handleVote = async (id, value) => {
+    const idea = ideas.find((i) => i.id === id);
+    if (!idea) return;
+
+    // If clicking the same direction, it removes the vote (server toggles)
+    const newVote = idea.userVote === value ? 0 : value;
+    const upDelta = (newVote === 1 ? 1 : 0) - (idea.userVote === 1 ? 1 : 0);
+    const downDelta = (newVote === -1 ? 1 : 0) - (idea.userVote === -1 ? 1 : 0);
+
+    // Optimistic update
+    setIdeas((prev) => prev.map((i) =>
+      i.id === id
+        ? { ...i, userVote: newVote, upvotes: i.upvotes + upDelta, downvotes: i.downvotes + downDelta }
+        : i
+    ));
+
+    try {
+      const res = await fetch(`${API}/api/ideas/${id}/vote`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value }),
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      // Revert on failure
+      setIdeas((prev) => prev.map((i) =>
+        i.id === id ? { ...i, userVote: idea.userVote, upvotes: idea.upvotes, downvotes: idea.downvotes } : i
+      ));
+    }
   };
+
+  const handleUpvote = (id) => handleVote(id, 1);
+  const handleDownvote = (id) => handleVote(id, -1);
   const handleToggleSave = (id) => {
     setIdeas(prev => prev.map(i => i.id === id ? { ...i, saved: !i.saved } : i));
   };
@@ -518,6 +558,7 @@ export default function CommunityPage() {
               key={idea.id}
               idea={idea}
               onUpvote={handleUpvote}
+              onDownvote={handleDownvote}
               onToggleSave={handleToggleSave}
               onToggleBuild={handleToggleBuild}
             />
