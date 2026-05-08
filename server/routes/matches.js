@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Match = require('../models/Match');
+const { Message } = require('../models/Message');
 const { ensureAuthenticated } = require('../middleware/auth');
 const { onMatchCollab, onMatchPassed } = require('../lib/elo');
 
@@ -62,6 +63,18 @@ router.patch('/:id/status', ensureAuthenticated, async (req, res) => {
     }
 
     res.json(match);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/:id', ensureAuthenticated, async (req, res) => {
+  try {
+    const match = await Match.findOne({ _id: req.params.id, users: req.user._id });
+    if (!match) return res.status(404).json({ error: 'Match not found' });
+    await Message.deleteMany({ matchId: match._id });
+    await match.deleteOne();
+    res.json({ deleted: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

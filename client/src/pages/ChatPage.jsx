@@ -14,7 +14,7 @@ import {
  DialogContent,
  Chip,
 } from '@mui/material';
-import { ArrowUpward as SendIcon, Close as CloseIcon, GitHub as GitHubIcon } from '@mui/icons-material';
+import { ArrowUpward as SendIcon, Close as CloseIcon, GitHub as GitHubIcon, Delete as DeleteIcon } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 
 
@@ -360,7 +360,7 @@ function AiMessage({ msg }) {
 // ─── top bar ──────────────────────────────────────────────────────────────────
 
 
-function TopBar({ channel, eloScore, users = [], onUserClick }) {
+function TopBar({ channel, eloScore, users = [], onUserClick, onDelete }) {
  return (
    <Box
      sx={{
@@ -421,6 +421,16 @@ function TopBar({ channel, eloScore, users = [], onUserClick }) {
            {user.initials}
          </Avatar>
        ))}
+       {onDelete && (
+         <IconButton
+           size="small"
+           onClick={onDelete}
+           title="Delete chat"
+           sx={{ color: '#9ca3af', '&:hover': { color: '#ef4444' } }}
+         >
+           <DeleteIcon fontSize="small" />
+         </IconButton>
+       )}
      </Box>
    </Box>
  );
@@ -742,6 +752,21 @@ export default function ChatPage() {
     });
   }, [match, me.color, me.id, me.initials]);
 
+  const handleDelete = useCallback(async () => {
+    if (!match?._id) return;
+    if (!window.confirm('Delete this chat and all messages? This cannot be undone.')) return;
+    try {
+      const res = await fetch(`${API}/api/matches/${match._id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error();
+      navigate('/app/matches');
+    } catch {
+      // silent — chat stays open
+    }
+  }, [match, navigate]);
+
   if (loadingMatch) {
     return (
       <Box sx={{ display: 'grid', placeItems: 'center', height: '100%', backgroundColor: '#F2F2F2' }}>
@@ -839,7 +864,7 @@ export default function ChatPage() {
 
       {/* Chat area */}
       <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        <TopBar channel={channel} eloScore={match.score?.total ?? 0} users={topBarUsers} onUserClick={setProfileModal} />
+        <TopBar channel={channel} eloScore={match.score?.total ?? 0} users={topBarUsers} onUserClick={setProfileModal} onDelete={handleDelete} />
 
         <Box sx={{ flex: 1, overflowY: 'auto', py: 2 }}>
           {messages.map((msg) => {
