@@ -14,7 +14,7 @@ import {
  DialogContent,
  Chip,
 } from '@mui/material';
-import { ArrowUpward as SendIcon, Close as CloseIcon, GitHub as GitHubIcon, Delete as DeleteIcon } from '@mui/icons-material';
+import { ArrowUpward as SendIcon, Close as CloseIcon, GitHub as GitHubIcon, Delete as DeleteIcon, Build as BuildIcon } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 
 
@@ -360,7 +360,7 @@ function AiMessage({ msg }) {
 // ─── top bar ──────────────────────────────────────────────────────────────────
 
 
-function TopBar({ channel, eloScore, users = [], onUserClick, onDelete }) {
+function TopBar({ channel, eloScore, users = [], onUserClick, onDelete, onBuild }) {
  return (
    <Box
      sx={{
@@ -421,6 +421,16 @@ function TopBar({ channel, eloScore, users = [], onUserClick, onDelete }) {
            {user.initials}
          </Avatar>
        ))}
+       {onBuild && (
+         <IconButton
+           size="small"
+           onClick={onBuild}
+           title="Build together"
+           sx={{ color: '#9ca3af', '&:hover': { color: '#7C5CFC' } }}
+         >
+           <BuildIcon fontSize="small" />
+         </IconButton>
+       )}
        {onDelete && (
          <IconButton
            size="small"
@@ -901,6 +911,7 @@ export default function ChatPage() {
               })
               .catch(() => {});
           }}
+          onBuild={() => navigate(`/app/build/${match._id}`, { state: { match } })}
           onDelete={handleDelete}
         />
 

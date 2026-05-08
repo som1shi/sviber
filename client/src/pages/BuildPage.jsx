@@ -1,34 +1,41 @@
 import { useState, useEffect, useRef } from 'react';
-import { Box, Typography, Avatar, TextField, IconButton, LinearProgress } from '@mui/material';
-import { ArrowUpward as SendIcon } from '@mui/icons-material';
+import { useParams, useLocation, useNavigate } from 'react-router-dom';
+import { Box, Typography, Avatar, TextField, IconButton, LinearProgress, CircularProgress, Button } from '@mui/material';
+import { ArrowUpward as SendIcon, ArrowBack as BackIcon } from '@mui/icons-material';
+import { useAuth } from '../context/AuthContext';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 const PURPLE = '#7C5CFC';
 const GREEN  = '#00E5A0';
 
-// ─── demo seed (replace with real match data from router state / API) ─────────
-const MATCH = {
-  ideaTitle:        'AI meeting notes that actually ship actions',
-  partnerName:      'sarvagya s.',
-  partnerInitials:  'SS',
-  partnerColor:     '#F5A623',
-  myInitials:       'DD',
-  myColor:          GREEN,
-  // TODO: replace with real GitHub usernames from user profiles once auth is wired up
-  myGithub:         'serenanahu',
-  partnerGithub:    'som1shi',
-};
+const PARTNER_COLORS = ['#F5A623', '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4'];
 
-// ─── helpers ──────────────────────────────────────────────────────────────────
+function getInitials(name = '') {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0])
+    .join('')
+    .toUpperCase() || '?';
+}
+
+function getUserId(u) {
+  return u?._id || u?.id;
+}
+
+function getUserName(u) {
+  return u?.name || u?.displayName || 'Founder';
+}
+
+// ─── chat sub-components ──────────────────────────────────────────────────────
 
 function now() {
   return new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
 
-function makeAiMsg(text)  { return { id: Date.now() + Math.random(), from: 'ai',   text, time: now() }; }
+function makeAiMsg(text)   { return { id: Date.now() + Math.random(), from: 'ai',   text, time: now() }; }
 function makeUserMsg(text) { return { id: Date.now() + Math.random(), from: 'user', text, time: now() }; }
-
-// ─── chat sub-components ──────────────────────────────────────────────────────
 
 function TypingIndicator() {
   return (
@@ -81,11 +88,11 @@ function AiMessage({ msg }) {
   );
 }
 
-function UserMessage({ msg }) {
+function UserMessage({ msg, initials, color }) {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'row-reverse', alignItems: 'flex-start', gap: 1.5, px: 3, mb: 2 }}>
-      <Avatar sx={{ width: 34, height: 34, bgcolor: MATCH.myColor, fontSize: '0.65rem', fontWeight: 700, color: '#1a1a1a', fontFamily: '"DM Mono", monospace', flexShrink: 0, mt: 0.25 }}>
-        {MATCH.myInitials}
+      <Avatar sx={{ width: 34, height: 34, bgcolor: color, fontSize: '0.65rem', fontWeight: 700, color: '#1a1a1a', fontFamily: '"DM Mono", monospace', flexShrink: 0, mt: 0.25 }}>
+        {initials}
       </Avatar>
       <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5, flexDirection: 'row-reverse' }}>
@@ -148,7 +155,6 @@ function PreviewGenerating({ progress }) {
           {progress}% complete
         </Typography>
       </Box>
-
       <Box sx={{ flex: 1, overflowY: 'hidden', display: 'flex', flexDirection: 'column', gap: 0.5 }}>
         {lines.slice(0, visibleCount).map((line, i) => (
           <Typography
@@ -207,37 +213,76 @@ function PreviewLive({ html, repoUrl }) {
 // ─── main page ────────────────────────────────────────────────────────────────
 
 export default function BuildPage() {
-  const [messages, setMessages]         = useState([]);
-  const [input, setInput]               = useState('');
-  const [phase, setPhase]               = useState('intro');
-  const [isTyping, setIsTyping]         = useState(false);
+  const { matchId } = useParams();
+  const { state } = useLocation();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+
+  const [match, setMatch]               = useState(state?.match || null);
+  const [loadingMatch, setLoadingMatch] = useState(!state?.match);
+  const [matchError, setMatchError]     = useState('');
+
+  const [messages, setMessages]           = useState([]);
+  const [input, setInput]                 = useState('');
+  const [phase, setPhase]                 = useState('intro');
+  const [isTyping, setIsTyping]           = useState(false);
   const [generatedHtml, setGeneratedHtml] = useState(null);
   const [buildProgress, setBuildProgress] = useState(0);
-  const [q1Answer, setQ1Answer]         = useState('');
-  const [repoUrl, setRepoUrl]           = useState(null);
-  const bottomRef = useRef(null);
+  const [q1Answer, setQ1Answer]           = useState('');
+  const [repoUrl, setRepoUrl]             = useState(null);
+  const bottomRef  = useRef(null);
   const progressRef = useRef(null);
 
-  const addAiMsg  = (text) => setMessages((m) => [...m, makeAiMsg(text)]);
+  // Fetch match from API if not passed via router state
+  useEffect(() => {
+    if (!matchId) return;
+    if (state?.match) { setLoadingMatch(false); return; }
+    fetch(`${API}/api/matches/${matchId}`, { credentials: 'include' })
+      .then((r) => { if (!r.ok) throw new Error('Match not found'); return r.json(); })
+      .then((data) => { setMatch(data); setLoadingMatch(false); })
+      .catch((err) => { setMatchError(err.message); setLoadingMatch(false); });
+  }, [matchId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Derive MATCH config from real data once loaded
+  const matchConfig = (() => {
+    if (!match || !user) return null;
+    const myId = getUserId(user);
+    const myUser     = match.users?.find((u) => String(getUserId(u)) === String(myId));
+    const partnerUser = match.users?.find((u) => String(getUserId(u)) !== String(myId));
+    const partnerName = getUserName(partnerUser);
+    const colorSeed = String(getUserId(partnerUser) || '').slice(-1).charCodeAt(0) % PARTNER_COLORS.length;
+    return {
+      ideaTitle:       match.idea?.title || 'your idea',
+      partnerName:     partnerName.toLowerCase(),
+      partnerInitials: getInitials(partnerName),
+      partnerColor:    PARTNER_COLORS[colorSeed] || '#F5A623',
+      myInitials:      getInitials(getUserName(myUser || user)),
+      myColor:         GREEN,
+      myGithub:        myUser?.githubLink || myUser?.github || '',
+      partnerGithub:   partnerUser?.githubLink || partnerUser?.github || '',
+    };
+  })();
+
+  const addAiMsg   = (text) => setMessages((m) => [...m, makeAiMsg(text)]);
   const addUserMsg = (text) => setMessages((m) => [...m, makeUserMsg(text)]);
 
-  // Auto-scroll
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
 
-  // Kick off the intro on mount
+  // Kick off the intro once match data is ready
   useEffect(() => {
+    if (!matchConfig || phase !== 'intro') return;
     const t1 = setTimeout(() => setIsTyping(true), 600);
     const t2 = setTimeout(() => {
       setIsTyping(false);
       addAiMsg(
-        `You and ${MATCH.partnerName} just matched on "${MATCH.ideaTitle}" — let's build it right now.\n\nFirst question: what's the core problem this solves for users? One sentence.`
+        `You and ${matchConfig.partnerName} just matched on "${matchConfig.ideaTitle}" — let's build it right now.\n\nFirst question: what's the core problem this solves for users? One sentence.`
       );
       setPhase('q1');
     }, 2200);
     return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, []);
+  }, [matchConfig]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const simulateProgress = () => {
     setBuildProgress(0);
@@ -252,6 +297,7 @@ export default function BuildPage() {
   const handleSend = async () => {
     const text = input.trim();
     if (!text || isTyping || ['generating', 'publishing', 'published', 'done', 'intro'].includes(phase)) return;
+    if (!matchConfig) return;
 
     addUserMsg(text);
     setInput('');
@@ -263,30 +309,30 @@ export default function BuildPage() {
         const res = await fetch(`${API}/api/build/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ideaTitle: MATCH.ideaTitle, phase: 'q1', q1Answer: text }),
+          body: JSON.stringify({ ideaTitle: matchConfig.ideaTitle, phase: 'q1', q1Answer: text }),
         });
         const data = await res.json();
         setIsTyping(false);
         addAiMsg(data.content || 'Got it. Who is the primary user of this product?');
-        setPhase('q2');
       } catch {
         setIsTyping(false);
         addAiMsg('Got it. One more — who is the primary user? Consumers, businesses, or a specific niche?');
-        setPhase('q2');
       }
+      setPhase('q2');
+
     } else if (phase === 'q2') {
       try {
         const res = await fetch(`${API}/api/build/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ideaTitle: MATCH.ideaTitle, phase: 'q2', q1Answer, q2Answer: text }),
+          body: JSON.stringify({ ideaTitle: matchConfig.ideaTitle, phase: 'q2', q1Answer, q2Answer: text }),
         });
         const data = await res.json();
         setIsTyping(false);
-        addAiMsg(data.content || "Perfect — I have everything I need. Generating your app now...");
+        addAiMsg(data.content || 'Perfect — I have everything I need. Generating your app now...');
       } catch {
         setIsTyping(false);
-        addAiMsg("Perfect. Generating your app now...");
+        addAiMsg('Perfect. Generating your app now...');
       }
 
       setPhase('generating');
@@ -296,13 +342,11 @@ export default function BuildPage() {
         const res = await fetch(`${API}/api/build/generate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ideaTitle: MATCH.ideaTitle, problem: q1Answer, targetUser: text }),
+          body: JSON.stringify({ ideaTitle: matchConfig.ideaTitle, problem: q1Answer, targetUser: text }),
         });
         const data = await res.json();
 
-        if (!res.ok || !data.html) {
-          throw new Error(data.error || `Server error ${res.status}`);
-        }
+        if (!res.ok || !data.html) throw new Error(data.error || `Server error ${res.status}`);
 
         clearInterval(progressRef.current);
         setBuildProgress(100);
@@ -310,14 +354,19 @@ export default function BuildPage() {
         setPhase('publishing');
         setTimeout(() => {
           setGeneratedHtml(html);
-          addAiMsg("App generated. Creating your GitHub repo now...");
+          addAiMsg('App generated. Creating your GitHub repo now...');
         }, 600);
 
         try {
           const publishRes = await fetch(`${API}/api/build/publish`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ appCode: generatedCode, ideaTitle: MATCH.ideaTitle, github1: MATCH.myGithub, github2: MATCH.partnerGithub }),
+            body: JSON.stringify({
+              appCode: generatedCode,
+              ideaTitle: matchConfig.ideaTitle,
+              github1: matchConfig.myGithub,
+              github2: matchConfig.partnerGithub,
+            }),
           });
           const publishData = await publishRes.json();
           if (!publishRes.ok || publishData.error) throw new Error(publishData.error || `Error ${publishRes.status}`);
@@ -332,7 +381,7 @@ export default function BuildPage() {
         clearInterval(progressRef.current);
         setPhase('done');
         const msg = err.message?.includes('fetch') || err.message?.includes('Failed')
-          ? "Can't reach the server — is it running? (`npm run dev` in /server)"
+          ? "Can't reach the server — is it running?"
           : `Generation failed: ${err.message}`;
         addAiMsg(msg);
       }
@@ -343,7 +392,30 @@ export default function BuildPage() {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
 
-  const inputDisabled = isTyping || ['generating', 'publishing', 'published', 'done', 'intro'].includes(phase);
+  const inputDisabled = !matchConfig || isTyping || ['generating', 'publishing', 'published', 'done', 'intro'].includes(phase);
+
+  // ─── loading / error states ──────────────────────────────────────────────────
+
+  if (loadingMatch) {
+    return (
+      <Box sx={{ display: 'grid', placeItems: 'center', height: '100%', bgcolor: '#111' }}>
+        <CircularProgress sx={{ color: PURPLE }} />
+      </Box>
+    );
+  }
+
+  if (matchError || !match) {
+    return (
+      <Box sx={{ display: 'grid', placeItems: 'center', height: '100%', bgcolor: '#111', p: 4 }}>
+        <Box sx={{ textAlign: 'center' }}>
+          <Typography sx={{ color: '#fff', mb: 2 }}>{matchError || 'Match not found.'}</Typography>
+          <Button onClick={() => navigate('/app/matches')} sx={{ color: PURPLE }}>
+            ← Back to matches
+          </Button>
+        </Box>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
@@ -362,22 +434,29 @@ export default function BuildPage() {
             px: 3, py: 1.5, borderBottom: '1px solid rgba(0,0,0,0.08)', flexShrink: 0,
           }}
         >
-          <Box>
-            <Typography sx={{ fontFamily: '"DM Mono", monospace', fontWeight: 500, fontSize: '0.95rem', color: '#1a1a1a' }}>
-              # build
-            </Typography>
-            <Typography sx={{ fontFamily: '"DM Sans", sans-serif', fontSize: '0.72rem', color: '#888', mt: 0.25, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {MATCH.ideaTitle}
-            </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <IconButton size="small" onClick={() => navigate(`/app/matches/${matchId}`)} sx={{ color: '#888', p: 0.5 }}>
+              <BackIcon fontSize="small" />
+            </IconButton>
+            <Box>
+              <Typography sx={{ fontFamily: '"DM Mono", monospace', fontWeight: 500, fontSize: '0.95rem', color: '#1a1a1a' }}>
+                # build
+              </Typography>
+              <Typography sx={{ fontFamily: '"DM Sans", sans-serif', fontSize: '0.72rem', color: '#888', mt: 0.25, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {matchConfig?.ideaTitle}
+              </Typography>
+            </Box>
           </Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-            <Avatar sx={{ width: 28, height: 28, bgcolor: MATCH.partnerColor, fontSize: '0.62rem', fontWeight: 700, color: '#1a1a1a' }}>
-              {MATCH.partnerInitials}
-            </Avatar>
-            <Avatar sx={{ width: 28, height: 28, bgcolor: MATCH.myColor, fontSize: '0.62rem', fontWeight: 700, color: '#1a1a1a' }}>
-              {MATCH.myInitials}
-            </Avatar>
-          </Box>
+          {matchConfig && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+              <Avatar sx={{ width: 28, height: 28, bgcolor: matchConfig.partnerColor, fontSize: '0.62rem', fontWeight: 700, color: '#1a1a1a' }}>
+                {matchConfig.partnerInitials}
+              </Avatar>
+              <Avatar sx={{ width: 28, height: 28, bgcolor: matchConfig.myColor, fontSize: '0.62rem', fontWeight: 700, color: '#1a1a1a' }}>
+                {matchConfig.myInitials}
+              </Avatar>
+            </Box>
+          )}
         </Box>
 
         {/* Messages */}
@@ -385,7 +464,7 @@ export default function BuildPage() {
           {messages.map((msg) =>
             msg.from === 'ai'
               ? <AiMessage key={msg.id} msg={msg} />
-              : <UserMessage key={msg.id} msg={msg} />
+              : <UserMessage key={msg.id} msg={msg} initials={matchConfig?.myInitials} color={matchConfig?.myColor || GREEN} />
           )}
           {isTyping && <TypingIndicator />}
           <div ref={bottomRef} />
