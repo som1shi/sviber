@@ -434,7 +434,7 @@ export default function SwipePage() {
         <DialogTitle sx={{ fontWeight: 700 }}>Submit an idea</DialogTitle>
         <DialogContent>
           <Typography sx={{ color: '#6b7280', mb: 2, fontSize: '0.9rem' }}>
-            Describe your rough idea — Groq will turn it into a polished startup card and add it to the shared deck.
+            Describe your rough idea — Sviber will turn it into a polished startup card and add it to the shared deck.
           </Typography>
           <TextField
             autoFocus
