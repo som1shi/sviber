@@ -743,6 +743,8 @@ export default function ChatPage() {
 
     const myId = getUserId(user);
     const handleIncoming = (msg) => {
+      // Skip own messages — sender already has them via optimistic update
+      if (msg.senderId === myId) return;
       setMessages((prev) => [
         ...prev,
         {
@@ -752,7 +754,7 @@ export default function ChatPage() {
           senderColor: msg.senderColor,
           senderInitials: msg.senderInitials,
           time: new Date(msg.time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-          alignRight: msg.senderId === myId,
+          alignRight: false,
           content: msg.content,
           highlights: [],
         },
@@ -768,12 +770,13 @@ export default function ChatPage() {
 
   const handleSend = useCallback((text) => {
     if (!canStartChat(match)) return;
+    const tempId = `temp-${Date.now()}`;
 
-    // Add to UI immediately so the sender doesn't wait for the server
+    // Optimistic UI
     setMessages((prev) => [
       ...prev,
       {
-        id: Date.now(),
+        id: tempId,
         type: 'user',
         sender: 'you',
         senderColor: me.color,
@@ -785,14 +788,27 @@ export default function ChatPage() {
       },
     ]);
 
-    socket.emit('send-message', {
-      matchId: match._id,
-      senderId: me.id,
-      senderInitials: me.initials,
-      senderColor: me.color,
-      content: text,
-    });
-  }, [match, me.color, me.id, me.initials]);
+    // Persist via REST — reliable regardless of socket state
+    fetch(`${API}/api/messages/${match._id}`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: text, senderInitials: me.initials, senderColor: me.color }),
+    })
+      .then((r) => r.ok ? r.json() : Promise.reject(r.status))
+      .then((saved) => {
+        // Replace temp message with the saved one (has real _id and createdAt)
+        setMessages((prev) => prev.map((m) =>
+          m.id === tempId ? { ...m, id: saved._id } : m
+        ));
+      })
+      .catch(() => {
+        // Mark failed messages so the user knows
+        setMessages((prev) => prev.map((m) =>
+          m.id === tempId ? { ...m, failed: true } : m
+        ));
+      });
+  }, [match, me.color, me.initials]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleDelete = useCallback(async () => {
     if (!match?._id) return;

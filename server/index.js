@@ -22,6 +22,7 @@ app.set('trust proxy', 1);
 const io = new Server(httpServer, {
   cors: { origin: '*' },
 });
+app.set('io', io);
 
 const defaultDevOrigins = ['http://localhost:5173', 'http://localhost:5174', 'http://127.0.0.1:5173', 'http://127.0.0.1:5174'];
 const corsAllowed = process.env.CLIENT_URL
