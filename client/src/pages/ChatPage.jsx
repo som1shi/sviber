@@ -700,16 +700,16 @@ export default function ChatPage() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Load history via HTTP — reliable across refreshes and re-navigation
+  // Load history via HTTP — stable, works across refresh/re-navigation
   useEffect(() => {
-    if (!canStartChat(match) || !user) return;
+    if (!canStartChat(match)) return;
     let ignore = false;
 
-    const myId = getUserId(user);
     fetch(`${API}/api/messages/${match._id}`, { credentials: 'include' })
       .then((r) => r.ok ? r.json() : [])
       .then((history) => {
         if (ignore) return;
+        const myId = getUserId(user);
         const loaded = history.map((m) => ({
           id: m._id,
           type: 'user',
@@ -726,15 +726,20 @@ export default function ChatPage() {
       .catch(() => {});
 
     return () => { ignore = true; };
-  }, [match?._id, user]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [match?._id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Join socket room for real-time new messages only
+  // Join socket room; rejoin automatically if the server restarts
   useEffect(() => {
     if (!canStartChat(match)) return;
 
-    socket.emit('join-room', match._id, ({ error }) => {
-      if (error) setChatError(error);
-    });
+    const joinRoom = () => {
+      socket.emit('join-room', match._id, ({ error } = {}) => {
+        if (error) setChatError(error);
+      });
+    };
+
+    joinRoom();
+    socket.on('connect', joinRoom); // re-join after reconnect
 
     const myId = getUserId(user);
     const handleIncoming = (msg) => {
@@ -755,7 +760,10 @@ export default function ChatPage() {
     };
 
     socket.on('chat-message', handleIncoming);
-    return () => socket.off('chat-message', handleIncoming);
+    return () => {
+      socket.off('connect', joinRoom);
+      socket.off('chat-message', handleIncoming);
+    };
   }, [match?._id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSend = useCallback((text) => {

@@ -126,7 +126,9 @@ io.on('connection', (socket) => {
     try {
       await Message.create({ matchId, senderId, senderInitials, senderColor, content });
       await Match.findByIdAndUpdate(matchId, { lastMessageAt: now }).catch(() => {});
-    } catch (_) {}
+    } catch (saveErr) {
+      console.error('[send-message] failed to save message:', saveErr.message);
+    }
 
     socket.to(matchId).emit('chat-message', {
       id: Date.now(),
