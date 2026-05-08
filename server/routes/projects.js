@@ -9,7 +9,7 @@ router.get('/', ensureAuthenticated, async (req, res) => {
   try {
     const projects = await Project.find({ 'contributors.user': req.user._id })
       .populate('idea', 'title description tags')
-      .populate('contributors.user', 'displayName avatar')
+      .populate('contributors.user', 'name profilePic')
       .sort({ updatedAt: -1 });
     res.json(projects);
   } catch (err) {
