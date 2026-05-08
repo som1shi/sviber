@@ -85,8 +85,14 @@ router.post('/', ensureAuthenticated, async (req, res) => {
 
       for (const other of otherSwipes) {
         const pk = matchPairKey(ideaId, req.user._id, other.user);
+        // Skip if this exact idea+pair already has a match
         const exists = await Match.findOne({ pairKey: pk });
         if (exists) continue;
+        // Skip if these two users are already matched on ANY idea
+        const pairAlreadyMatched = await Match.findOne({
+          users: { $all: [req.user._id, other.user] },
+        });
+        if (pairAlreadyMatched) continue;
 
         const [otherUser, otherSurvey] = await Promise.all([
           User.findById(other.user),
@@ -110,7 +116,7 @@ router.post('/', ensureAuthenticated, async (req, res) => {
           });
           const populatedMatch = await Match.findById(createdMatch._id)
             .populate('idea', 'title description tags')
-            .populate('users', 'name profilePic elo.total skills primaryRole')
+            .populate('users', 'name profilePic title school bio githubLink elo skills primaryRole')
             .lean();
           matchesCreated.push(populatedMatch || createdMatch);
         } catch (createErr) {

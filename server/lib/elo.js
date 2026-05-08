@@ -71,11 +71,10 @@ function computeTotal(breakdown, startingBonus, lastActive) {
   return Math.max(0, Math.round(BASE + startingBonus + bucketAdj - decay));
 }
 
-async function recalcElo(userId) {
+async function recalcElo(userId, event = null) {
   await ensureEloSchema(userId);
   const user = await User.findById(userId);
   if (!user) return;
-  // Safe defaults in case sub-fields are missing
   const s = user.elo.stats ?? {};
   const stats = Object.fromEntries(
     Object.keys(EMPTY_STATS).map((k) => [k, s[k] ?? 0])
@@ -88,11 +87,19 @@ async function recalcElo(userId) {
     activity:    computeActivity(stats),
   };
   const total = computeTotal(breakdown, startingBonus, lastActive);
-  await User.findByIdAndUpdate(userId, {
-    'elo.breakdown':  breakdown,
-    'elo.total':      total,
-    'elo.lastActive': new Date(),
-  });
+
+  const update = {
+    $set: {
+      'elo.breakdown':  breakdown,
+      'elo.total':      total,
+      'elo.lastActive': new Date(),
+    },
+  };
+  // Only record a history point for meaningful events, not every swipe
+  if (event) {
+    update.$push = { 'elo.history': { $each: [{ total, date: new Date(), event }], $slice: -50 } };
+  }
+  await User.findByIdAndUpdate(userId, update);
   return total;
 }
 
@@ -103,31 +110,31 @@ async function onSwipe(userId, isRight) {
   const inc = { 'elo.stats.totalSwipes': 1 };
   if (isRight) inc['elo.stats.rightSwipes'] = 1;
   await User.findByIdAndUpdate(userId, { $inc: inc });
-  return recalcElo(userId);
+  return recalcElo(userId); // no event label → no history entry
 }
 
 async function onMatchCollab(userIds) {
   await ensureEloSchema(userIds);
   await User.updateMany({ _id: { $in: userIds } }, { $inc: { 'elo.stats.matchesCollab': 1 } });
-  await Promise.all(userIds.map(recalcElo));
+  await Promise.all(userIds.map((id) => recalcElo(id, 'collab')));
 }
 
 async function onMatchPassed(userId) {
   await ensureEloSchema([userId]);
   await User.findByIdAndUpdate(userId, { $inc: { 'elo.stats.matchesPassed': 1 } });
-  return recalcElo(userId);
+  return recalcElo(userId, 'passed');
 }
 
 async function onProjectCompleted(userIds) {
   await ensureEloSchema(userIds);
   await User.updateMany({ _id: { $in: userIds } }, { $inc: { 'elo.stats.projectsLaunched': 1 } });
-  await Promise.all(userIds.map(recalcElo));
+  await Promise.all(userIds.map((id) => recalcElo(id, 'project launched')));
 }
 
 async function onProjectAbandoned(userIds) {
   await ensureEloSchema(userIds);
   await User.updateMany({ _id: { $in: userIds } }, { $inc: { 'elo.stats.projectsAbandoned': 1 } });
-  await Promise.all(userIds.map(recalcElo));
+  await Promise.all(userIds.map((id) => recalcElo(id, 'project abandoned')));
 }
 
 async function onPeerRating(userId, value) {
@@ -135,13 +142,13 @@ async function onPeerRating(userId, value) {
   await User.findByIdAndUpdate(userId, {
     $inc: { 'elo.stats.peerRatingSum': value, 'elo.stats.peerRatingCount': 1 },
   });
-  return recalcElo(userId);
+  return recalcElo(userId, 'peer rating');
 }
 
 async function onIdeaVote(founderId, delta) {
   await ensureEloSchema([founderId]);
   await User.findByIdAndUpdate(founderId, { $inc: { 'elo.stats.ideaNetVotes': delta } });
-  return recalcElo(founderId);
+  return recalcElo(founderId, 'idea vote');
 }
 
 module.exports = { recalcElo, ensureEloSchema, onSwipe, onMatchCollab, onMatchPassed, onProjectCompleted, onProjectAbandoned, onPeerRating, onIdeaVote };

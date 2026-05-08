@@ -10,8 +10,11 @@ import {
  InputAdornment,
  Button,
  CircularProgress,
+ Dialog,
+ DialogContent,
+ Chip,
 } from '@mui/material';
-import { ArrowUpward as SendIcon } from '@mui/icons-material';
+import { ArrowUpward as SendIcon, Close as CloseIcon, GitHub as GitHubIcon, Delete as DeleteIcon } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 
 
@@ -357,7 +360,7 @@ function AiMessage({ msg }) {
 // ─── top bar ──────────────────────────────────────────────────────────────────
 
 
-function TopBar({ channel, eloScore, users = [] }) {
+function TopBar({ channel, eloScore, users = [], onUserClick, onDelete }) {
  return (
    <Box
      sx={{
@@ -403,6 +406,7 @@ function TopBar({ channel, eloScore, users = [] }) {
          <Avatar
            key={user.id || user._id || index}
            src={user.avatar || user.profilePic}
+           onClick={() => onUserClick?.(user)}
            sx={{
              width: 30,
              height: 30,
@@ -410,11 +414,23 @@ function TopBar({ channel, eloScore, users = [] }) {
              fontSize: '0.68rem',
              fontWeight: 700,
              color: '#1a1a1a',
+             cursor: 'pointer',
+             '&:hover': { opacity: 0.85, transform: 'scale(1.1)', transition: 'all 0.15s' },
            }}
          >
            {user.initials}
          </Avatar>
        ))}
+       {onDelete && (
+         <IconButton
+           size="small"
+           onClick={onDelete}
+           title="Delete chat"
+           sx={{ color: '#9ca3af', '&:hover': { color: '#ef4444' } }}
+         >
+           <DeleteIcon fontSize="small" />
+         </IconButton>
+       )}
      </Box>
    </Box>
  );
@@ -541,6 +557,85 @@ function canStartChat(match) {
   return Boolean(match?._id && match?.idea && match?.users?.length === 2);
 }
 
+function ProfileModal({ user: u, onClose, sharedProject }) {
+  if (!u) return null;
+  const name = u.displayName || u.name || u.initials || 'Unknown';
+  const role = u.role || u.title || 'Builder';
+  const school = u.school || '';
+  const bio = u.bio || '';
+  const github = u.github || u.githubLink || '';
+  const avatar = u.avatar || u.profilePic || '';
+  const eloVal = typeof u.elo === 'object' ? (u.elo?.total ?? 1000) : (Number(u.elo) || 1000);
+  const skills = Array.isArray(u.skills) ? u.skills : [];
+
+  return (
+    <Dialog open onClose={onClose} maxWidth="xs" fullWidth>
+      <DialogContent sx={{ p: 0, position: 'relative' }}>
+        <IconButton onClick={onClose} sx={{ position: 'absolute', top: 8, right: 8, zIndex: 1 }}>
+          <CloseIcon />
+        </IconButton>
+        <Box sx={{ p: 3, pt: 4 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+            <Avatar src={avatar} sx={{ width: 64, height: 64, fontSize: '1.5rem', bgcolor: PURPLE }}>
+              {name[0]}
+            </Avatar>
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>{name}</Typography>
+              <Typography sx={{ color: '#6b7280', fontSize: '0.9rem' }}>{role}</Typography>
+              {school && <Typography sx={{ color: '#9ca3af', fontSize: '0.8rem' }}>{school}</Typography>}
+            </Box>
+          </Box>
+          <Typography sx={{ fontSize: '0.85rem', fontWeight: 700, color: PURPLE, mb: 2 }}>
+            {eloVal} ELO
+          </Typography>
+          {bio && (
+            <Typography sx={{ color: '#4b5563', fontSize: '0.9rem', lineHeight: 1.6, mb: 2 }}>
+              {bio}
+            </Typography>
+          )}
+          {skills.length > 0 && (
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: 2 }}>
+              {skills.map((s) => (
+                <Chip key={s} label={s} size="small" sx={{ backgroundColor: '#f3f0ff', color: '#5b21b6', fontWeight: 500 }} />
+              ))}
+            </Box>
+          )}
+          {github && (
+            <Button
+              startIcon={<GitHubIcon />}
+              href={github.startsWith('http') ? github : `https://${github}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              size="small"
+              sx={{ color: '#1a1a1a', textTransform: 'none', p: 0, mb: sharedProject ? 2 : 0 }}
+            >
+              {github}
+            </Button>
+          )}
+          {sharedProject && (
+            <Box sx={{ mt: github ? 0 : 1, p: 1.5, borderRadius: 2, border: '1px solid #e5e7eb', backgroundColor: '#f9fafb' }}>
+              <Typography sx={{ fontSize: '0.7rem', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em', mb: 0.5 }}>
+                Active project together
+              </Typography>
+              <Typography sx={{ fontWeight: 700, fontSize: '0.9rem', mb: 0.25 }}>{sharedProject.name}</Typography>
+              {sharedProject.description && (
+                <Typography sx={{ fontSize: '0.8rem', color: '#6b7280', lineHeight: 1.4 }}>{sharedProject.description}</Typography>
+              )}
+              <Chip
+                label={sharedProject.status}
+                size="small"
+                sx={{ mt: 0.75, height: 18, fontSize: '0.68rem', textTransform: 'capitalize',
+                  backgroundColor: sharedProject.status === 'active' ? '#dcfce7' : '#f3f4f6',
+                  color: sharedProject.status === 'active' ? '#16a34a' : '#6b7280' }}
+              />
+            </Box>
+          )}
+        </Box>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function ChatPage() {
   const { matchId } = useParams();
   const navigate = useNavigate();
@@ -550,6 +645,46 @@ export default function ChatPage() {
   const [messages, setMessages] = useState([]);
   const [loadingMatch, setLoadingMatch] = useState(!state?.match);
   const [chatError, setChatError] = useState('');
+  const [profileModal, setProfileModal] = useState(null);
+  const [sharedProject, setSharedProject] = useState(null);
+  const [allMatches, setAllMatches] = useState([]);
+
+  // On every matchId change: reset state then always fetch fresh from API.
+  // state?.match is used as an instant initial value to avoid a loading flash,
+  // but we still fetch so stale nav state can't leave the chat stuck.
+  useEffect(() => {
+    if (!matchId) return;
+    setMessages([]);
+    setChatError('');
+
+    if (state?.match) {
+      setMatch(state.match);
+      setLoadingMatch(false);
+    } else {
+      setMatch(null);
+      setLoadingMatch(true);
+    }
+
+    let ignore = false;
+    fetch(`${API}/api/matches/${matchId}`, { credentials: 'include' })
+      .then((r) => {
+        if (!r.ok) throw new Error('This chat is not available yet.');
+        return r.json();
+      })
+      .then((data) => { if (!ignore) { setMatch(data); setLoadingMatch(false); } })
+      .catch((err) => { if (!ignore) { setChatError(err.message); setLoadingMatch(false); } });
+
+    return () => { ignore = true; };
+  }, [matchId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sidebar: load all matches once
+  useEffect(() => {
+    fetch(`${API}/api/matches`, { credentials: 'include' })
+      .then((r) => r.ok ? r.json() : [])
+      .then(setAllMatches)
+      .catch(() => {});
+  }, []);
+
   const bottomRef = useRef(null);
 
   const me = {
@@ -561,29 +696,6 @@ export default function ChatPage() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
-
-  useEffect(() => {
-    if (state?.match || !matchId) return;
-
-    let ignore = false;
-    async function loadMatch() {
-      try {
-        const res = await fetch(`${API}/api/matches/${matchId}`, { credentials: 'include' });
-        if (!res.ok) throw new Error('This chat is not available yet.');
-        const data = await res.json();
-        if (!ignore) setMatch(data);
-      } catch (err) {
-        if (!ignore) setChatError(err.message);
-      } finally {
-        if (!ignore) setLoadingMatch(false);
-      }
-    }
-
-    loadMatch();
-    return () => {
-      ignore = true;
-    };
-  }, [matchId, state?.match]);
 
   // Join the match room and load history
   useEffect(() => {
@@ -659,6 +771,21 @@ export default function ChatPage() {
     });
   }, [match, me.color, me.id, me.initials]);
 
+  const handleDelete = useCallback(async () => {
+    if (!match?._id) return;
+    if (!window.confirm('Delete this chat and all messages? This cannot be undone.')) return;
+    try {
+      const res = await fetch(`${API}/api/matches/${match._id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error();
+      navigate('/app/matches');
+    } catch {
+      // silent — chat stays open
+    }
+  }, [match, navigate]);
+
   if (loadingMatch) {
     return (
       <Box sx={{ display: 'grid', placeItems: 'center', height: '100%', backgroundColor: '#F2F2F2' }}>
@@ -692,23 +819,107 @@ export default function ChatPage() {
     initials: getInitials(getUserName(matchUser)),
   }));
 
-  return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: '#F2F2F2' }}>
-      <TopBar channel={channel} eloScore={match.score?.total ?? 0} users={topBarUsers} />
+  // Stable userId — used in sidebar partner detection.
+  // getUserId returns undefined while auth is loading; that's fine, sidebar just
+  // won't highlight the active partner until user resolves (one render cycle).
+  const myId = getUserId(user) || me.id;
 
-      <Box sx={{ flex: 1, overflowY: 'auto', py: 2 }}>
-        {messages.map((msg) => {
-          if (msg.type === 'divider') return <DateDivider key={msg.id} label={msg.label} />;
-          if (msg.type === 'system-issue') return <SystemIssue key={msg.id} issueNumber={msg.issueNumber} content={msg.content} />;
-          if (msg.type === 'elo-event') return <EloEvent key={msg.id} text={msg.text} delta={msg.delta} />;
-          if (msg.type === 'ai') return <AiMessage key={msg.id} msg={msg} />;
-          if (msg.type === 'user') return <UserMessage key={msg.id} msg={msg} />;
-          return null;
-        })}
-        <div ref={bottomRef} />
+  return (
+    <Box sx={{ display: 'flex', height: '100%', backgroundColor: '#F2F2F2' }}>
+
+      {/* Matches sidebar */}
+      {allMatches.length > 0 && (
+        <Box sx={{
+          width: 220,
+          flexShrink: 0,
+          borderRight: '1px solid rgba(0,0,0,0.08)',
+          backgroundColor: '#EBEBEB',
+          overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
+        }}>
+          <Typography sx={{ px: 2, py: 1.5, fontSize: '0.7rem', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            Chats
+          </Typography>
+          {allMatches.map((m) => {
+            const partner = m.users?.find((u) => String(u._id) !== String(myId));
+            const partnerName = partner?.displayName || partner?.name || 'Builder';
+            const isActive = m._id === matchId;
+            return (
+              <Box
+                key={m._id}
+                onClick={() => navigate(`/app/matches/${m._id}`, { state: { match: m } })}
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1.25,
+                  px: 2,
+                  py: 1.25,
+                  cursor: 'pointer',
+                  backgroundColor: isActive ? 'rgba(124,92,252,0.1)' : 'transparent',
+                  borderLeft: isActive ? `3px solid ${PURPLE}` : '3px solid transparent',
+                  '&:hover': { backgroundColor: 'rgba(0,0,0,0.05)' },
+                }}
+              >
+                <Avatar
+                  src={partner?.avatar || partner?.profilePic}
+                  sx={{ width: 32, height: 32, fontSize: '0.75rem', bgcolor: PURPLE, flexShrink: 0 }}
+                >
+                  {partnerName[0]}
+                </Avatar>
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography sx={{ fontSize: '0.82rem', fontWeight: isActive ? 700 : 500, color: isActive ? PURPLE : '#1a1a1a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {partnerName}
+                  </Typography>
+                  <Typography sx={{ fontSize: '0.72rem', color: '#9ca3af', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {m.idea?.title || 'No idea'}
+                  </Typography>
+                </Box>
+              </Box>
+            );
+          })}
+        </Box>
+      )}
+
+      {/* Chat area */}
+      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+        <TopBar
+          channel={channel}
+          eloScore={match.score?.total ?? 0}
+          users={topBarUsers}
+          onUserClick={(u) => {
+            setProfileModal(u);
+            setSharedProject(null);
+            fetch(`${API}/api/projects`, { credentials: 'include' })
+              .then((r) => r.ok ? r.json() : [])
+              .then((projects) => {
+                const uid = getUserId(u) || String(u._id);
+                const found = projects.find((p) =>
+                  p.contributors?.some((c) => String(c.user?._id || c.user) === uid)
+                );
+                setSharedProject(found || null);
+              })
+              .catch(() => {});
+          }}
+          onDelete={handleDelete}
+        />
+
+        <Box sx={{ flex: 1, overflowY: 'auto', py: 2 }}>
+          {messages.map((msg) => {
+            if (msg.type === 'divider') return <DateDivider key={msg.id} label={msg.label} />;
+            if (msg.type === 'system-issue') return <SystemIssue key={msg.id} issueNumber={msg.issueNumber} content={msg.content} />;
+            if (msg.type === 'elo-event') return <EloEvent key={msg.id} text={msg.text} delta={msg.delta} />;
+            if (msg.type === 'ai') return <AiMessage key={msg.id} msg={msg} />;
+            if (msg.type === 'user') return <UserMessage key={msg.id} msg={msg} />;
+            return null;
+          })}
+          <div ref={bottomRef} />
+        </Box>
+
+        <MessageInput key={matchId} channel={channel} onSend={handleSend} />
       </Box>
 
-      <MessageInput channel={channel} onSend={handleSend} />
+      {profileModal && <ProfileModal user={profileModal} onClose={() => { setProfileModal(null); setSharedProject(null); }} sharedProject={sharedProject} />}
     </Box>
   );
 }

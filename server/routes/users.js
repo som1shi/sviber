@@ -14,13 +14,15 @@ function meShape(u) {
   if (!u) return u;
   const o = typeof u.toObject === 'function' ? u.toObject() : { ...u };
   const eloTotal =
-    o.elo && typeof o.elo === 'object' && 'total' in o.elo ? o.elo.total : Number(o.elo) || 0;
+    o.elo && typeof o.elo === 'object' && 'total' in o.elo ? o.elo.total : Number(o.elo) || 1000;
   return {
     ...o,
+    // legacy aliases kept for any callers that still use old names
     displayName: o.name,
     avatar: o.profilePic,
     github: o.githubLink || '',
     role: o.title || '',
+    // elo as number for badge displays; eloDetail has breakdown + history
     elo: eloTotal,
     eloDetail: o.elo,
   };
@@ -36,6 +38,12 @@ async function extractText(buffer, mimetype) {
     return value;
   }
   return buffer.toString('utf8');
+}
+
+function hashSeed(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
+  return Math.abs(h);
 }
 
 async function scoreResume(text) {
@@ -67,6 +75,8 @@ Reply with JSON only, no markdown:
     model: 'llama-3.3-70b-versatile',
     messages: [{ role: 'user', content: prompt }],
     response_format: { type: 'json_object' },
+    temperature: 0,
+    seed: hashSeed(text.slice(0, 3000)),
   });
 
   const parsed = JSON.parse(completion.choices[0].message.content);
@@ -163,7 +173,7 @@ router.post('/me/resume', (req, res, next) => {
     const { score, reasons } = await scoreResume(text);
     await ensureEloSchema(req.user._id);
     await User.findByIdAndUpdate(req.user._id, { 'elo.startingBonus': score });
-    const newTotal = await recalcElo(req.user._id);
+    const newTotal = await recalcElo(req.user._id, 'resume upload');
     res.json({ bonus: score, reasons, newTotal });
   } catch (err) {
     res.status(500).json({ error: err.message });

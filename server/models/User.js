@@ -38,6 +38,12 @@ const userSchema = new mongoose.Schema(
       stats:        { type: eloStatsSchema, default: () => ({}) },
       startingBonus:{ type: Number, default: 0 },
       lastActive:   { type: Date, default: Date.now },
+      history: [{
+        total:    { type: Number },
+        date:     { type: Date, default: Date.now },
+        event:    { type: String },
+        _id:      false,
+      }],
     },
   },
   { timestamps: true }

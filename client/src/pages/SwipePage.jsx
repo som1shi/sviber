@@ -184,7 +184,7 @@ export default function SwipePage() {
       setLoading(true);
       const swiped = getSwipedIds();
       try {
-        const res = await fetch(`${API}/api/ideas?tab=hot&limit=50`, { credentials: 'include' });
+        const res = await fetch(`${API}/api/swipe/feed?limit=50`, { credentials: 'include' });
         if (res.ok) {
           const data = await res.json();
           if (Array.isArray(data) && data.length > 0) {
