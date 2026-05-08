@@ -620,27 +620,42 @@ export default function ChatPage() {
   const [profileModal, setProfileModal] = useState(null);
   const [allMatches, setAllMatches] = useState([]);
 
-  // Reset when switching between chats
+  // On every matchId change: reset state then always fetch fresh from API.
+  // state?.match is used as an instant initial value to avoid a loading flash,
+  // but we still fetch so stale nav state can't leave the chat stuck.
   useEffect(() => {
+    if (!matchId) return;
+    setMessages([]);
+    setChatError('');
+
     if (state?.match) {
       setMatch(state.match);
-      setMessages([]);
-      setChatError('');
       setLoadingMatch(false);
     } else {
       setMatch(null);
-      setMessages([]);
-      setChatError('');
       setLoadingMatch(true);
     }
+
+    let ignore = false;
+    fetch(`${API}/api/matches/${matchId}`, { credentials: 'include' })
+      .then((r) => {
+        if (!r.ok) throw new Error('This chat is not available yet.');
+        return r.json();
+      })
+      .then((data) => { if (!ignore) { setMatch(data); setLoadingMatch(false); } })
+      .catch((err) => { if (!ignore) { setChatError(err.message); setLoadingMatch(false); } });
+
+    return () => { ignore = true; };
   }, [matchId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Sidebar: load all matches once
   useEffect(() => {
     fetch(`${API}/api/matches`, { credentials: 'include' })
       .then((r) => r.ok ? r.json() : [])
       .then(setAllMatches)
       .catch(() => {});
   }, []);
+
   const bottomRef = useRef(null);
 
   const me = {
@@ -652,29 +667,6 @@ export default function ChatPage() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
-
-  useEffect(() => {
-    if (state?.match || !matchId) return;
-
-    let ignore = false;
-    async function loadMatch() {
-      try {
-        const res = await fetch(`${API}/api/matches/${matchId}`, { credentials: 'include' });
-        if (!res.ok) throw new Error('This chat is not available yet.');
-        const data = await res.json();
-        if (!ignore) setMatch(data);
-      } catch (err) {
-        if (!ignore) setChatError(err.message);
-      } finally {
-        if (!ignore) setLoadingMatch(false);
-      }
-    }
-
-    loadMatch();
-    return () => {
-      ignore = true;
-    };
-  }, [matchId, state?.match]);
 
   // Join the match room and load history
   useEffect(() => {
@@ -783,7 +775,10 @@ export default function ChatPage() {
     initials: getInitials(getUserName(matchUser)),
   }));
 
-  const myId = getUserId(user);
+  // Stable userId — used in sidebar partner detection.
+  // getUserId returns undefined while auth is loading; that's fine, sidebar just
+  // won't highlight the active partner until user resolves (one render cycle).
+  const myId = getUserId(user) || me.id;
 
   return (
     <Box sx={{ display: 'flex', height: '100%', backgroundColor: '#F2F2F2' }}>
