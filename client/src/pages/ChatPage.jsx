@@ -14,7 +14,7 @@ import {
  DialogContent,
  Chip,
 } from '@mui/material';
-import { ArrowUpward as SendIcon, Close as CloseIcon, GitHub as GitHubIcon, Delete as DeleteIcon, Build as BuildIcon } from '@mui/icons-material';
+import { ArrowUpward as SendIcon, Close as CloseIcon, GitHub as GitHubIcon, Delete as DeleteIcon, Build as BuildIcon, ChevronRight as ChevronRightIcon } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 
 
@@ -360,7 +360,7 @@ function AiMessage({ msg }) {
 // ─── top bar ──────────────────────────────────────────────────────────────────
 
 
-function TopBar({ channel, eloScore, users = [], onUserClick, onDelete, onBuild }) {
+function TopBar({ channel, eloScore, users = [], onUserClick, onDelete }) {
  return (
    <Box
      sx={{
@@ -421,16 +421,6 @@ function TopBar({ channel, eloScore, users = [], onUserClick, onDelete, onBuild 
            {user.initials}
          </Avatar>
        ))}
-       {onBuild && (
-         <IconButton
-           size="small"
-           onClick={onBuild}
-           title="Build together"
-           sx={{ color: '#9ca3af', '&:hover': { color: '#7C5CFC' } }}
-         >
-           <BuildIcon fontSize="small" />
-         </IconButton>
-       )}
        {onDelete && (
          <IconButton
            size="small"
@@ -911,7 +901,6 @@ export default function ChatPage() {
               })
               .catch(() => {});
           }}
-          onBuild={() => navigate(`/app/build/${match._id}`, { state: { match } })}
           onDelete={handleDelete}
         />
 
@@ -928,6 +917,38 @@ export default function ChatPage() {
         </Box>
 
         <MessageInput key={matchId} channel={channel} onSend={handleSend} />
+
+        {/* Build together CTA */}
+        <Box
+          onClick={() => navigate(`/app/build/${match._id}`, { state: { match } })}
+          sx={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            mx: 3, mb: 2.5, px: 2.5, py: 1.5,
+            borderRadius: 3,
+            background: `linear-gradient(135deg, ${PURPLE} 0%, #5b3fcc 100%)`,
+            cursor: 'pointer',
+            boxShadow: '0 4px 16px rgba(124,92,252,0.35)',
+            transition: 'transform 0.15s, box-shadow 0.15s',
+            '&:hover': {
+              transform: 'translateY(-1px)',
+              boxShadow: '0 6px 22px rgba(124,92,252,0.45)',
+            },
+            '&:active': { transform: 'translateY(0)' },
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <BuildIcon sx={{ color: '#fff', fontSize: 20 }} />
+            <Box>
+              <Typography sx={{ fontFamily: '"DM Sans", sans-serif', fontWeight: 700, fontSize: '0.9rem', color: '#fff', lineHeight: 1.2 }}>
+                Build together
+              </Typography>
+              <Typography sx={{ fontFamily: '"DM Mono", monospace', fontSize: '0.7rem', color: 'rgba(255,255,255,0.7)', mt: 0.25 }}>
+                generate a prototype · launch a github repo
+              </Typography>
+            </Box>
+          </Box>
+          <ChevronRightIcon sx={{ color: 'rgba(255,255,255,0.7)', fontSize: 20 }} />
+        </Box>
       </Box>
 
       {profileModal && <ProfileModal user={profileModal} onClose={() => { setProfileModal(null); setSharedProject(null); }} sharedProject={sharedProject} />}
