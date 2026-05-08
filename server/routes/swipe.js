@@ -70,58 +70,73 @@ router.post('/', ensureAuthenticated, async (req, res) => {
     const matchesCreated = [];
 
     if (direction === 'right') {
-      const otherSwipes = await Swipe.find({
-        idea: ideaId,
-        direction: 'right',
-        user: { $ne: req.user._id },
-      });
-
-      const [currentUser, currentSurvey] = await Promise.all([
-        User.findById(req.user._id),
-        Survey.findOne({ userId: req.user._id }).lean(),
-      ]);
-
-      if (!currentUser) return res.status(404).json({ error: 'User not found' });
-
-      for (const other of otherSwipes) {
-        const pk = matchPairKey(ideaId, req.user._id, other.user);
-        // Skip if this exact idea+pair already has a match
-        const exists = await Match.findOne({ pairKey: pk });
-        if (exists) continue;
-        // Skip if these two users are already matched on ANY idea
-        const pairAlreadyMatched = await Match.findOne({
-          users: { $all: [req.user._id, other.user] },
+      // One match per idea per user — skip if already matched on this idea
+      const alreadyMatchedOnIdea = await Match.findOne({ idea: ideaId, users: req.user._id });
+      if (!alreadyMatchedOnIdea) {
+        const otherSwipes = await Swipe.find({
+          idea: ideaId,
+          direction: 'right',
+          user: { $ne: req.user._id },
         });
-        if (pairAlreadyMatched) continue;
 
-        const [otherUser, otherSurvey] = await Promise.all([
-          User.findById(other.user),
-          Survey.findOne({ userId: other.user }).lean(),
+        const [currentUser, currentSurvey] = await Promise.all([
+          User.findById(req.user._id),
+          Survey.findOne({ userId: req.user._id }).lean(),
         ]);
-        if (!otherUser) continue;
 
-        const score = structuredScore(currentSurvey, otherSurvey, currentUser, otherUser);
+        if (!currentUser) return res.status(404).json({ error: 'User not found' });
 
-        const orderedUsers = [req.user._id, other.user].sort((a, b) =>
-          String(a).localeCompare(String(b))
-        );
+        // Score every candidate and pick the best available one
+        let bestScore = null;
+        let bestOther = null;
+        let bestOtherUser = null;
 
-        try {
-          const createdMatch = await Match.create({
-            idea: ideaId,
-            pairKey: pk,
-            users: orderedUsers,
-            score,
-            scorePending: false,
-          });
-          const populatedMatch = await Match.findById(createdMatch._id)
-            .populate('idea', 'title description tags')
-            .populate('users', 'name profilePic title school bio githubLink elo skills primaryRole')
-            .lean();
-          matchesCreated.push(populatedMatch || createdMatch);
-        } catch (createErr) {
-          if (createErr.code === 11000) continue;
-          throw createErr;
+        for (const other of otherSwipes) {
+          // Skip if this exact pair already has a match for this idea
+          const pk = matchPairKey(ideaId, req.user._id, other.user);
+          const exists = await Match.findOne({ pairKey: pk });
+          if (exists) continue;
+
+          // Skip if the other person is already matched on this idea with someone else
+          const otherMatchedOnIdea = await Match.findOne({ idea: ideaId, users: other.user });
+          if (otherMatchedOnIdea) continue;
+
+          const [otherUser, otherSurvey] = await Promise.all([
+            User.findById(other.user),
+            Survey.findOne({ userId: other.user }).lean(),
+          ]);
+          if (!otherUser) continue;
+
+          const score = structuredScore(currentSurvey, otherSurvey, currentUser, otherUser);
+          if (!bestScore || score.total > bestScore.total) {
+            bestScore = score;
+            bestOther = other;
+            bestOtherUser = otherUser;
+          }
+        }
+
+        // Create exactly one match — with the highest-scoring candidate
+        if (bestOther && bestScore) {
+          const pk = matchPairKey(ideaId, req.user._id, bestOther.user);
+          const orderedUsers = [req.user._id, bestOther.user].sort((a, b) =>
+            String(a).localeCompare(String(b))
+          );
+          try {
+            const createdMatch = await Match.create({
+              idea: ideaId,
+              pairKey: pk,
+              users: orderedUsers,
+              score: bestScore,
+              scorePending: false,
+            });
+            const populatedMatch = await Match.findById(createdMatch._id)
+              .populate('idea', 'title description tags')
+              .populate('users', 'name profilePic title school bio githubLink elo skills primaryRole')
+              .lean();
+            matchesCreated.push(populatedMatch || createdMatch);
+          } catch (createErr) {
+            if (createErr.code !== 11000) throw createErr;
+          }
         }
       }
     }

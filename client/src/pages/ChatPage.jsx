@@ -14,7 +14,7 @@ import {
  DialogContent,
  Chip,
 } from '@mui/material';
-import { ArrowUpward as SendIcon, Close as CloseIcon, GitHub as GitHubIcon, Delete as DeleteIcon } from '@mui/icons-material';
+import { ArrowUpward as SendIcon, Close as CloseIcon, GitHub as GitHubIcon, Delete as DeleteIcon, Build as BuildIcon, ChevronRight as ChevronRightIcon } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 
 
@@ -540,7 +540,10 @@ function getUserId(user) {
 }
 
 function getUserName(user) {
-  return user?.displayName || user?.name || 'Founder';
+  const name = user?.name?.trim() || user?.displayName?.trim();
+  if (name) return name;
+  if (user?.email) return user.email.split('@')[0];
+  return 'Founder';
 }
 
 function getInitials(name) {
@@ -559,7 +562,7 @@ function canStartChat(match) {
 
 function ProfileModal({ user: u, onClose, sharedProject }) {
   if (!u) return null;
-  const name = u.displayName || u.name || u.initials || 'Unknown';
+  const name = u.name?.trim() || u.displayName?.trim() || (u.email ? u.email.split('@')[0] : null) || u.initials || 'Unknown';
   const role = u.role || u.title || 'Builder';
   const school = u.school || '';
   const bio = u.bio || '';
@@ -697,32 +700,51 @@ export default function ChatPage() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Join the match room and load history
+  // Load history via HTTP — stable, works across refresh/re-navigation
+  useEffect(() => {
+    if (!canStartChat(match)) return;
+    let ignore = false;
+
+    fetch(`${API}/api/messages/${match._id}`, { credentials: 'include' })
+      .then((r) => r.ok ? r.json() : [])
+      .then((history) => {
+        if (ignore) return;
+        const myId = getUserId(user);
+        const loaded = history.map((m) => ({
+          id: m._id,
+          type: 'user',
+          sender: m.senderInitials,
+          senderColor: m.senderColor,
+          senderInitials: m.senderInitials,
+          time: new Date(m.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+          alignRight: m.senderId === myId,
+          content: m.content,
+          highlights: [],
+        }));
+        setMessages(loaded);
+      })
+      .catch(() => {});
+
+    return () => { ignore = true; };
+  }, [match?._id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Join socket room; rejoin automatically if the server restarts
   useEffect(() => {
     if (!canStartChat(match)) return;
 
-    socket.emit('join-room', match._id, ({ history = [], error }) => {
-      if (error) {
-        setChatError(error);
-        return;
-      }
+    const joinRoom = () => {
+      socket.emit('join-room', match._id, ({ error } = {}) => {
+        if (error) setChatError(error);
+      });
+    };
 
-      const loaded = history.map((m) => ({
-        id: m._id,
-        type: 'user',
-        sender: m.senderInitials,
-        senderColor: m.senderColor,
-        senderInitials: m.senderInitials,
-        time: new Date(m.time || m.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-        alignRight: m.senderId === me.id,
-        content: m.content,
-        highlights: [],
-      }));
-      setMessages(loaded);
-    });
+    joinRoom();
+    socket.on('connect', joinRoom); // re-join after reconnect
 
-    // Listen for incoming messages
+    const myId = getUserId(user);
     const handleIncoming = (msg) => {
+      // Skip own messages — sender already has them via optimistic update
+      if (msg.senderId === myId) return;
       setMessages((prev) => [
         ...prev,
         {
@@ -740,17 +762,21 @@ export default function ChatPage() {
     };
 
     socket.on('chat-message', handleIncoming);
-    return () => socket.off('chat-message', handleIncoming);
-  }, [match, me.id]);
+    return () => {
+      socket.off('connect', joinRoom);
+      socket.off('chat-message', handleIncoming);
+    };
+  }, [match?._id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSend = useCallback((text) => {
     if (!canStartChat(match)) return;
+    const tempId = `temp-${Date.now()}`;
 
-    // Add to UI immediately so the sender doesn't wait for the server
+    // Optimistic UI
     setMessages((prev) => [
       ...prev,
       {
-        id: Date.now(),
+        id: tempId,
         type: 'user',
         sender: 'you',
         senderColor: me.color,
@@ -762,14 +788,27 @@ export default function ChatPage() {
       },
     ]);
 
-    socket.emit('send-message', {
-      matchId: match._id,
-      senderId: me.id,
-      senderInitials: me.initials,
-      senderColor: me.color,
-      content: text,
-    });
-  }, [match, me.color, me.id, me.initials]);
+    // Persist via REST — reliable regardless of socket state
+    fetch(`${API}/api/messages/${match._id}`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: text, senderInitials: me.initials, senderColor: me.color }),
+    })
+      .then((r) => r.ok ? r.json() : Promise.reject(r.status))
+      .then((saved) => {
+        // Replace temp message with the saved one (has real _id and createdAt)
+        setMessages((prev) => prev.map((m) =>
+          m.id === tempId ? { ...m, id: saved._id } : m
+        ));
+      })
+      .catch(() => {
+        // Mark failed messages so the user knows
+        setMessages((prev) => prev.map((m) =>
+          m.id === tempId ? { ...m, failed: true } : m
+        ));
+      });
+  }, [match, me.color, me.initials]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleDelete = useCallback(async () => {
     if (!match?._id) return;
@@ -843,7 +882,7 @@ export default function ChatPage() {
           </Typography>
           {allMatches.map((m) => {
             const partner = m.users?.find((u) => String(u._id) !== String(myId));
-            const partnerName = partner?.displayName || partner?.name || 'Builder';
+            const partnerName = partner?.name?.trim() || partner?.displayName?.trim() || (partner?.email ? partner.email.split('@')[0] : null) || 'Builder';
             const isActive = m._id === matchId;
             return (
               <Box
@@ -917,6 +956,38 @@ export default function ChatPage() {
         </Box>
 
         <MessageInput key={matchId} channel={channel} onSend={handleSend} />
+
+        {/* Build together CTA */}
+        <Box
+          onClick={() => navigate(`/app/build/${match._id}`, { state: { match } })}
+          sx={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            mx: 3, mb: 2.5, px: 2.5, py: 1.5,
+            borderRadius: 3,
+            background: `linear-gradient(135deg, ${PURPLE} 0%, #5b3fcc 100%)`,
+            cursor: 'pointer',
+            boxShadow: '0 4px 16px rgba(124,92,252,0.35)',
+            transition: 'transform 0.15s, box-shadow 0.15s',
+            '&:hover': {
+              transform: 'translateY(-1px)',
+              boxShadow: '0 6px 22px rgba(124,92,252,0.45)',
+            },
+            '&:active': { transform: 'translateY(0)' },
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <BuildIcon sx={{ color: '#fff', fontSize: 20 }} />
+            <Box>
+              <Typography sx={{ fontFamily: '"DM Sans", sans-serif', fontWeight: 700, fontSize: '0.9rem', color: '#fff', lineHeight: 1.2 }}>
+                Build together
+              </Typography>
+              <Typography sx={{ fontFamily: '"DM Mono", monospace', fontSize: '0.7rem', color: 'rgba(255,255,255,0.7)', mt: 0.25 }}>
+                generate a prototype · launch a github repo
+              </Typography>
+            </Box>
+          </Box>
+          <ChevronRightIcon sx={{ color: 'rgba(255,255,255,0.7)', fontSize: 20 }} />
+        </Box>
       </Box>
 
       {profileModal && <ProfileModal user={profileModal} onClose={() => { setProfileModal(null); setSharedProject(null); }} sharedProject={sharedProject} />}

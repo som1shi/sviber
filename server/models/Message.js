@@ -4,7 +4,7 @@ const messageSchema = new mongoose.Schema(
   {
     matchId: { type: String, required: true, index: true },
     senderId: { type: String, required: true },
-    senderInitials: { type: String, required: true },
+    senderInitials: { type: String, default: '?' },
     senderColor: { type: String, default: '#7C5CFC' },
     content: { type: String, required: true },
     /** Optional attachment (image/PDF) uploaded via POST /api/uploads kind=chat */

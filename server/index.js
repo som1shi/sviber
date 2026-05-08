@@ -22,6 +22,7 @@ app.set('trust proxy', 1);
 const io = new Server(httpServer, {
   cors: { origin: '*' },
 });
+app.set('io', io);
 
 const defaultDevOrigins = ['http://localhost:5173', 'http://localhost:5174', 'http://127.0.0.1:5173', 'http://127.0.0.1:5174'];
 const corsAllowed = process.env.CLIENT_URL
@@ -80,6 +81,7 @@ app.use('/api/build', require('./routes/build'));
 app.use('/api/survey', require('./routes/survey'));
 app.use('/api/resume', require('./routes/resume'));
 app.use('/api/generate-ideas', generateIdeasRouter);
+app.use('/api/messages', require('./routes/messages'));
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -125,7 +127,9 @@ io.on('connection', (socket) => {
     try {
       await Message.create({ matchId, senderId, senderInitials, senderColor, content });
       await Match.findByIdAndUpdate(matchId, { lastMessageAt: now }).catch(() => {});
-    } catch (_) {}
+    } catch (saveErr) {
+      console.error('[send-message] failed to save message:', saveErr.message);
+    }
 
     socket.to(matchId).emit('chat-message', {
       id: Date.now(),
