@@ -20,7 +20,7 @@ const io = new Server(httpServer, {
 });
 
 app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5175', credentials: true }));
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 
 app.use(session({
   secret: process.env.SESSION_SECRET || 'dev-secret',
@@ -35,7 +35,8 @@ app.use(session({
 }));
 
 const connectDB = require('./config/db');
-connectDB().then(() => autoSeed(50)).catch(() => {});
+const { router: generateIdeasRouter, autoSeed } = require('./routes/generateIdeas');
+connectDB().then(() => autoSeed()).catch(() => {});
 
 const passport = require('passport');
 require('./config/passport');
@@ -50,7 +51,7 @@ app.use('/api/projects', require('./routes/projects'));
 app.use('/api/swipe', require('./routes/swipe'));
 app.use('/api/build', require('./routes/build'));
 app.use('/api/survey', require('./routes/survey'));
-const { router: generateIdeasRouter, autoSeed } = require('./routes/generateIdeas');
+app.use('/api/resume', require('./routes/resume'));
 app.use('/api/generate-ideas', generateIdeasRouter);
 
 app.get('/api/health', (req, res) => {

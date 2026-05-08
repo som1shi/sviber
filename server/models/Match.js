@@ -9,6 +9,8 @@ const matchSchema = new mongoose.Schema({
   score: {
     ideaAlignment: { type: Number, default: 0 },
     skillsFit: { type: Number, default: 0 },
+    ambitionScore: { type: Number, default: 0 },
+    commitmentScore: { type: Number, default: 0 },
     eloCompatibility: { type: Number, default: 0 },
     activity: { type: Number, default: 0 },
     total: { type: Number, default: 0 },
