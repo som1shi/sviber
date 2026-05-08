@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Box, Typography, Avatar, Button, CircularProgress,
-  Alert, Chip, Dialog, DialogContent, IconButton,
+  Alert, Chip, Dialog, DialogContent, IconButton, Tooltip,
 } from '@mui/material';
 import { Favorite as FavoriteIcon, Chat as ChatIcon, Close as CloseIcon, GitHub as GitHubIcon } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
@@ -10,10 +10,45 @@ import { useAuth } from '../context/AuthContext';
 const API = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 const PURPLE = '#7C5CFC';
 
+function partnerDisplayName(partner) {
+  if (!partner) return 'Unknown';
+  if (partner.name && partner.name.trim()) return partner.name.trim();
+  if (partner.email) return partner.email.split('@')[0];
+  return 'Builder';
+}
+
+function scoreColor(total) {
+  if (total >= 75) return '#16a34a';
+  if (total >= 55) return '#d97706';
+  return '#dc2626';
+}
+
+function ScoreBar({ label, value }) {
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+      <Typography sx={{ fontSize: '0.72rem', color: '#9ca3af', width: 76, flexShrink: 0 }}>{label}</Typography>
+      <Box sx={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: '#f0f0f0', overflow: 'hidden' }}>
+        <Box
+          sx={{
+            height: '100%', borderRadius: 2,
+            width: `${Math.min(100, Math.max(0, value))}%`,
+            backgroundColor: scoreColor(value),
+            transition: 'width 0.6s ease',
+          }}
+        />
+      </Box>
+      <Typography sx={{ fontSize: '0.72rem', color: '#6b7280', width: 28, textAlign: 'right', flexShrink: 0 }}>
+        {value}
+      </Typography>
+    </Box>
+  );
+}
+
 function PartnerModal({ partner, onClose }) {
   if (!partner) return null;
   const eloVal = partner.elo && typeof partner.elo === 'object' ? (partner.elo.total ?? 1000) : (Number(partner.elo) || 1000);
   const skills = Array.isArray(partner.skills) ? partner.skills : [];
+  const displayName = partnerDisplayName(partner);
 
   return (
     <Dialog open onClose={onClose} maxWidth="xs" fullWidth>
@@ -24,11 +59,13 @@ function PartnerModal({ partner, onClose }) {
         <Box sx={{ p: 3, pt: 4 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
             <Avatar src={partner.profilePic} sx={{ width: 64, height: 64, fontSize: '1.5rem', bgcolor: '#4f46e5', fontWeight: 700 }}>
-              {partner.name?.[0]}
+              {displayName[0]?.toUpperCase()}
             </Avatar>
             <Box>
-              <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>{partner.name || 'Builder'}</Typography>
-              {partner.title && <Typography sx={{ color: '#6b7280', fontSize: '0.9rem' }}>{partner.title}</Typography>}
+              <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>{displayName}</Typography>
+              {partner.title && partner.title !== 'Builder' && (
+                <Typography sx={{ color: '#6b7280', fontSize: '0.9rem' }}>{partner.title}</Typography>
+              )}
               {partner.school && <Typography sx={{ color: '#9ca3af', fontSize: '0.8rem' }}>{partner.school}</Typography>}
             </Box>
           </Box>
@@ -110,7 +147,6 @@ export default function MatchesPage() {
     }
   };
 
-  // Filter out passed matches and sort by score
   const visibleMatches = useMemo(
     () => [...matches]
       .filter((m) => m.status !== 'passed')
@@ -179,7 +215,10 @@ export default function MatchesPage() {
           {visibleMatches.map((match) => {
             const partner = match.users?.find((u) => String(u._id) !== String(myId));
             const idea = match.idea;
-            const score = match.score?.total ?? 0;
+            const score = match.score ?? {};
+            const total = score.total ?? 0;
+            const displayName = partnerDisplayName(partner);
+            const noSurveyData = total === 60 && !score.culturefit;
 
             return (
               <Box
@@ -202,20 +241,41 @@ export default function MatchesPage() {
                       src={partner?.profilePic}
                       sx={{ width: 48, height: 48, bgcolor: '#4f46e5', fontWeight: 700 }}
                     >
-                      {partner?.name?.[0]}
+                      {displayName[0]?.toUpperCase()}
                     </Avatar>
                     <Box>
                       <Typography sx={{ fontWeight: 700, fontSize: '1.05rem' }}>
-                        {partner?.name || 'Builder'}
+                        {displayName}
                       </Typography>
                       <Typography sx={{ color: '#6b7280', fontSize: '0.85rem' }}>
-                        {partner?.title || 'Founder'}{partner?.school ? ` · ${partner.school}` : ''}
+                        {partner?.title && partner.title !== 'Builder' ? partner.title : partner?.primaryRole || 'Founder'}
+                        {partner?.school ? ` · ${partner.school}` : ''}
                       </Typography>
                     </Box>
                   </Box>
-                  <Typography sx={{ fontWeight: 700, color: '#16a34a', fontSize: '0.95rem', flexShrink: 0, mt: 0.5 }}>
-                    {score} match
-                  </Typography>
+
+                  {/* Score badge */}
+                  <Tooltip
+                    title={noSurveyData ? 'Complete the survey to get a real compatibility score' : 'Compatibility score based on skills, vision, commitment, and culture fit'}
+                    arrow
+                  >
+                    <Box sx={{ textAlign: 'right', flexShrink: 0, mt: 0.25, cursor: 'default' }}>
+                      <Typography sx={{ fontWeight: 700, color: scoreColor(total), fontSize: '1.1rem', lineHeight: 1 }}>
+                        {total}%
+                      </Typography>
+                      <Typography sx={{ fontSize: '0.72rem', color: '#9ca3af', mt: 0.25 }}>
+                        {noSurveyData ? 'no survey yet' : 'compatible'}
+                      </Typography>
+                    </Box>
+                  </Tooltip>
+                </Box>
+
+                {/* Score breakdown bars */}
+                <Box sx={{ mx: 3, mb: 2, display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+                  <ScoreBar label="Skills fit"   value={score.skillsComplementarity ?? 0} />
+                  <ScoreBar label="Vision"        value={score.visionAlignment ?? 0} />
+                  <ScoreBar label="Commitment"    value={score.commitmentAlignment ?? 0} />
+                  <ScoreBar label="Culture"       value={score.culturefit ?? 0} />
                 </Box>
 
                 {/* Idea card */}
