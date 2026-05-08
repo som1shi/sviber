@@ -9,8 +9,19 @@ router.get('/', ensureAuthenticated, async (req, res) => {
     const matches = await Match.find({ users: req.user._id })
       .populate('idea', 'title description tags')
       .populate('users', 'name profilePic title school bio githubLink elo skills primaryRole')
-      .sort({ createdAt: -1 });
-    res.json(matches);
+      .sort({ 'score.total': -1, createdAt: -1 });
+
+    // Deduplicate: one match per partner (keep highest score)
+    const myId = String(req.user._id);
+    const seen = new Map();
+    for (const m of matches) {
+      const partner = m.users.find((u) => String(u._id) !== myId);
+      if (!partner) continue;
+      const partnerId = String(partner._id);
+      if (!seen.has(partnerId)) seen.set(partnerId, m);
+    }
+
+    res.json([...seen.values()]);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
