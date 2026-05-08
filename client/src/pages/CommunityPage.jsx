@@ -116,7 +116,7 @@ function IdeaCard({ idea, onUpvote, onDownvote, onToggleSave, onToggleBuild, onO
           </Box>
         </Box>
 
-        {/* Heat meter makes the card feel “alive” */}
+        {/* Heat meter makes the card feel "alive" */}
         <Box sx={{ mb: 2.25 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.8 }}>
             <Typography sx={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase' }}>
@@ -472,10 +472,10 @@ export default function CommunityPage() {
     ? [...ideas].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     : [...ideas].sort((a, b) => b.heat - a.heat);
 
-  const filteredIdeas = topicFilter === ‘all’
+  const filteredIdeas = topicFilter === 'all'
     ? filteredIdeasByTab
     : filteredIdeasByTab.filter((idea) => {
-      const topicMatch = String(idea.topic || ‘’).toLowerCase() === topicFilter.toLowerCase();
+      const topicMatch = String(idea.topic || '').toLowerCase() === topicFilter.toLowerCase();
       const tagMatch = (idea.tags || []).some((t) => String(t).toLowerCase() === topicFilter.toLowerCase());
       return topicMatch || tagMatch;
     });
@@ -497,27 +497,27 @@ export default function CommunityPage() {
 
   const hasIdeas = !loading && searchedIdeas.length > 0;
   const emptyCopy = useMemo(() => {
-    if (tabName === ‘mine’) {
+    if (tabName === 'mine') {
       return {
-        title: ‘Be the first to post’,
-        subtitle: ‘Share a project idea so others can ask questions and collaborate.’,
+        title: 'Be the first to post',
+        subtitle: 'Share a project idea so others can ask questions and collaborate.',
       };
     }
-    if (tabName === ‘building’) {
+    if (tabName === 'building') {
       return {
-        title: ‘No building ideas yet’,
-        subtitle: ‘When people start building, they\’ll show up here.’,
+        title: 'No building ideas yet',
+        subtitle: 'When people start building, they\'ll show up here.',
       };
     }
-    if (topicFilter !== ‘all’) {
+    if (topicFilter !== 'all') {
       return {
         title: `No ${topicFilter} posts yet`,
-        subtitle: ‘Pick another topic or be the first to start this conversation.’,
+        subtitle: 'Pick another topic or be the first to start this conversation.',
       };
     }
     return {
-      title: ‘Be the first to post an idea’,
-      subtitle: ‘Start the discussion — post a project and ask for feedback.’,
+      title: 'Be the first to post an idea',
+      subtitle: 'Start the discussion — post a project and ask for feedback.',
     };
   }, [tabName, topicFilter]);
 
