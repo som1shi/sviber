@@ -540,7 +540,10 @@ function getUserId(user) {
 }
 
 function getUserName(user) {
-  return user?.displayName || user?.name || 'Founder';
+  const name = user?.name?.trim() || user?.displayName?.trim();
+  if (name) return name;
+  if (user?.email) return user.email.split('@')[0];
+  return 'Founder';
 }
 
 function getInitials(name) {
@@ -559,7 +562,7 @@ function canStartChat(match) {
 
 function ProfileModal({ user: u, onClose, sharedProject }) {
   if (!u) return null;
-  const name = u.displayName || u.name || u.initials || 'Unknown';
+  const name = u.name?.trim() || u.displayName?.trim() || (u.email ? u.email.split('@')[0] : null) || u.initials || 'Unknown';
   const role = u.role || u.title || 'Builder';
   const school = u.school || '';
   const bio = u.bio || '';
@@ -843,7 +846,7 @@ export default function ChatPage() {
           </Typography>
           {allMatches.map((m) => {
             const partner = m.users?.find((u) => String(u._id) !== String(myId));
-            const partnerName = partner?.displayName || partner?.name || 'Builder';
+            const partnerName = partner?.name?.trim() || partner?.displayName?.trim() || (partner?.email ? partner.email.split('@')[0] : null) || 'Builder';
             const isActive = m._id === matchId;
             return (
               <Box
