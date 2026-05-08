@@ -71,11 +71,10 @@ function computeTotal(breakdown, startingBonus, lastActive) {
   return Math.max(0, Math.round(BASE + startingBonus + bucketAdj - decay));
 }
 
-async function recalcElo(userId, event = 'update') {
+async function recalcElo(userId, event = null) {
   await ensureEloSchema(userId);
   const user = await User.findById(userId);
   if (!user) return;
-  // Safe defaults in case sub-fields are missing
   const s = user.elo.stats ?? {};
   const stats = Object.fromEntries(
     Object.keys(EMPTY_STATS).map((k) => [k, s[k] ?? 0])
@@ -88,15 +87,19 @@ async function recalcElo(userId, event = 'update') {
     activity:    computeActivity(stats),
   };
   const total = computeTotal(breakdown, startingBonus, lastActive);
-  const historyEntry = { total, date: new Date(), event };
-  await User.findByIdAndUpdate(userId, {
+
+  const update = {
     $set: {
       'elo.breakdown':  breakdown,
       'elo.total':      total,
       'elo.lastActive': new Date(),
     },
-    $push: { 'elo.history': { $each: [historyEntry], $slice: -50 } },
-  });
+  };
+  // Only record a history point for meaningful events, not every swipe
+  if (event) {
+    update.$push = { 'elo.history': { $each: [{ total, date: new Date(), event }], $slice: -50 } };
+  }
+  await User.findByIdAndUpdate(userId, update);
   return total;
 }
 
@@ -107,7 +110,7 @@ async function onSwipe(userId, isRight) {
   const inc = { 'elo.stats.totalSwipes': 1 };
   if (isRight) inc['elo.stats.rightSwipes'] = 1;
   await User.findByIdAndUpdate(userId, { $inc: inc });
-  return recalcElo(userId, 'swipe');
+  return recalcElo(userId); // no event label → no history entry
 }
 
 async function onMatchCollab(userIds) {
