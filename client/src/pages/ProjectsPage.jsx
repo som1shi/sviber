@@ -73,6 +73,8 @@ export default function ProjectsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
   const [cofoundersOpen, setCofoundersOpen] = useState(false);
+  const [matches, setMatches] = useState([]);
+  const [matchPickStep, setMatchPickStep] = useState(true); // true = show recommendations first
   const [bookmarked, setBookmarked] = useState([]);
   const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [detailsSaving, setDetailsSaving] = useState(false);
@@ -90,6 +92,45 @@ export default function ProjectsPage() {
   const [detailsPlanningRisks, setDetailsPlanningRisks] = useState('');
   const [detailsPlanningChecklistDone, setDetailsPlanningChecklistDone] = useState([]);
   const [communityTagOptions, setCommunityTagOptions] = useState([]);
+
+  async function loadMatches() {
+    try {
+      const res = await fetch(`${API}/api/matches`, { credentials: 'include' });
+      if (!res.ok) return;
+      const data = await res.json();
+      setMatches(Array.isArray(data) ? data : []);
+    } catch { /* silent */ }
+  }
+
+  function openCreateDialog() {
+    setMatchPickStep(true);
+    setTitle('');
+    setDescription('');
+    setTags([]);
+    setProjectUrl('');
+    setImageFile(null);
+    setPlanningProblem('');
+    setPlanningTargetUser('');
+    setPlanningMvpScope('');
+    setPlanningSuccessMetric('');
+    setPlanningLaunchGoal('');
+    setPlanningRisks('');
+    setPlanningChecklistDone([]);
+    setFormError('');
+    loadMatches();
+    setFormOpen(true);
+  }
+
+  function prefillFromMatch(match) {
+    const idea = match.idea || {};
+    const partner = match.users?.find((u) => String(u._id || u.id) !== String(user?._id || user?.id));
+    setTitle(idea.title || '');
+    setDescription(idea.description || '');
+    setTags(Array.isArray(idea.tags) ? idea.tags : []);
+    setPlanningProblem(idea.description || '');
+    setPlanningTargetUser('');
+    setMatchPickStep(false);
+  }
 
   async function loadProjects() {
     try {
@@ -648,7 +689,7 @@ export default function ProjectsPage() {
             backgroundColor: 'transparent',
             '&:hover': { backgroundColor: '#f9fafb' },
           }}
-          onClick={() => setFormOpen(true)}
+          onClick={openCreateDialog}
         >
           <Box
             sx={{
@@ -695,14 +736,77 @@ export default function ProjectsPage() {
       )}
 
       <Dialog open={formOpen} onClose={() => setFormOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Create project draft</DialogTitle>
+        <DialogTitle>{matchPickStep ? 'Start a project' : 'Create project draft'}</DialogTitle>
         <DialogContent sx={{ display: 'grid', gap: 2, pt: 1 }}>
-          <Box sx={{ display: 'flex', gap: 0.8, flexWrap: 'wrap' }}>
-            <Chip size="small" label="1. Basics" sx={{ fontWeight: 700 }} />
-            <Chip size="small" label="2. Add link + tags" sx={{ fontWeight: 700 }} />
-            <Chip size="small" label="3. Upload cover" sx={{ fontWeight: 700 }} />
-          </Box>
-          {formError && <Alert severity="error">{formError}</Alert>}
+
+          {/* ── Step 1: match recommendations ── */}
+          {matchPickStep && (
+            <Box>
+              {matches.length > 0 && (
+                <>
+                  <Typography sx={{ fontSize: 13, fontWeight: 700, color: '#374151', mb: 1.25 }}>
+                    Start from a match
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mb: 2 }}>
+                    {matches.map((m) => {
+                      const idea = m.idea || {};
+                      const partner = m.users?.find((u) => String(u._id || u.id) !== String(user?._id || user?.id));
+                      const partnerName = partner?.name?.trim() || partner?.email?.split('@')[0] || 'Co-founder';
+                      return (
+                        <Box
+                          key={m._id}
+                          onClick={() => prefillFromMatch(m)}
+                          sx={{
+                            display: 'flex', alignItems: 'center', gap: 1.5,
+                            p: 1.5, borderRadius: 2, border: '1px solid #e5e7eb',
+                            cursor: 'pointer', backgroundColor: '#fafafa',
+                            '&:hover': { backgroundColor: '#f3f0ff', borderColor: '#7C5CFC' },
+                            transition: 'all 0.15s',
+                          }}
+                        >
+                          <Avatar sx={{ width: 36, height: 36, bgcolor: '#7C5CFC', fontSize: '0.75rem', fontWeight: 700, flexShrink: 0 }}>
+                            {partnerName[0]?.toUpperCase()}
+                          </Avatar>
+                          <Box sx={{ minWidth: 0, flex: 1 }}>
+                            <Typography sx={{ fontWeight: 700, fontSize: 13, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {idea.title || 'Untitled idea'}
+                            </Typography>
+                            <Typography sx={{ fontSize: 12, color: '#6b7280' }}>
+                              with {partnerName}
+                            </Typography>
+                          </Box>
+                          {(idea.tags || []).slice(0, 2).map((t) => (
+                            <Chip key={t} label={t} size="small" sx={{ fontSize: 11, height: 20 }} />
+                          ))}
+                        </Box>
+                      );
+                    })}
+                  </Box>
+                  <Divider sx={{ mb: 2 }}>
+                    <Typography sx={{ fontSize: 12, color: '#9ca3af', px: 1 }}>or</Typography>
+                  </Divider>
+                </>
+              )}
+              <Button
+                fullWidth
+                variant="outlined"
+                onClick={() => setMatchPickStep(false)}
+                sx={{ textTransform: 'none', borderRadius: 2, borderColor: '#d1d5db', color: '#374151', '&:hover': { borderColor: '#7C5CFC', color: '#7C5CFC' } }}
+              >
+                Start from scratch
+              </Button>
+            </Box>
+          )}
+
+          {/* ── Step 2: the actual form ── */}
+          {!matchPickStep && (
+            <>
+              <Box sx={{ display: 'flex', gap: 0.8, flexWrap: 'wrap' }}>
+                <Chip size="small" label="1. Basics" sx={{ fontWeight: 700 }} />
+                <Chip size="small" label="2. Add link + tags" sx={{ fontWeight: 700 }} />
+                <Chip size="small" label="3. Upload cover" sx={{ fontWeight: 700 }} />
+              </Box>
+              {formError && <Alert severity="error">{formError}</Alert>}
           <TextField
             label="Project title"
             value={title}
@@ -812,16 +916,20 @@ export default function ProjectsPage() {
               onChange={(e) => setImageFile(e.target.files?.[0] || null)}
             />
           </Button>
+            </>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setFormOpen(false)} disabled={submitting}>Cancel</Button>
-          <Button
-            variant="contained"
-            onClick={handleSubmitProject}
-            disabled={submitting || !title.trim() || !description.trim()}
-          >
-            {submitting ? 'Submitting...' : 'Create draft'}
-          </Button>
+          {!matchPickStep && (
+            <Button
+              variant="contained"
+              onClick={handleSubmitProject}
+              disabled={submitting || !title.trim() || !description.trim()}
+            >
+              {submitting ? 'Submitting...' : 'Create draft'}
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
 
