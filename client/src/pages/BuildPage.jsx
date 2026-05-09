@@ -344,13 +344,36 @@ export default function BuildPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ideaTitle: matchConfig.ideaTitle, problem: q1Answer, targetUser: text }),
         });
-        const data = await res.json();
 
-        if (!res.ok || !data.html) throw new Error(data.error || `Server error ${res.status}`);
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || `Server error ${res.status}`);
+        }
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = '';
+        let finalData = null;
+
+        outer: while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const parts = buf.split('\n\n');
+          buf = parts.pop();
+          for (const part of parts) {
+            if (!part.startsWith('data: ')) continue;
+            const evt = JSON.parse(part.slice(6));
+            if (evt.type === 'error') throw new Error(evt.error);
+            if (evt.type === 'done') { finalData = evt; break outer; }
+          }
+        }
+
+        if (!finalData?.html) throw new Error('Generation incomplete');
 
         clearInterval(progressRef.current);
         setBuildProgress(100);
-        const { html, appCode: generatedCode } = data;
+        const { html, appCode: generatedCode } = finalData;
         setPhase('publishing');
         setTimeout(() => {
           setGeneratedHtml(html);

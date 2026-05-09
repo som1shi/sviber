@@ -1,43 +1,57 @@
 const express = require('express');
 const router = express.Router();
-const Anthropic = require('@anthropic-ai/sdk');
+const Groq = require('groq-sdk');
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-const SYSTEM_PROMPT = `You are Sviber AI, a sharp AI co-pilot embedded in Sviber — a platform where two founders match on an idea and immediately start building it together.
+const SYSTEM_PROMPT = `You are Sviber AI, a sharp AI co-pilot embedded in Sviber - a platform where two founders match on an idea and immediately start building it together.
 
-Your personality: concise, energetic, founder-mode. No fluff. Get straight to the point. Use short sentences. You're excited but efficient.`;
+Your personality: concise, energetic, founder-mode. No fluff. Get straight to the point. Use short sentences. You are excited but efficient.`;
+
+// Strips non-ASCII characters to keep prompts safe across all HTTP clients
+function safeStr(s) {
+  return String(s || '').replace(/[^\x00-\x7F]/g, '?');
+}
+
+// Wraps JSON body as Buffer so undici handles UTF-8 correctly for GitHub API calls
+function ghBody(data) {
+  return Buffer.from(JSON.stringify(data), 'utf-8');
+}
 
 // POST /api/build/chat  — single conversational turn
 router.post('/chat', async (req, res) => {
   try {
-    const { ideaTitle, phase, q1Answer } = req.body;
+    const ideaTitle = safeStr(req.body.ideaTitle);
+    const phase = req.body.phase;
+    const q1Answer = safeStr(req.body.q1Answer);
 
     let userContent;
     if (phase === 'q1') {
       userContent = `The user and their co-founder matched on the startup idea: "${ideaTitle}". The user answered the first question ("What core problem does this solve?") with: "${q1Answer}".
 
-Now ask your second and final question. Ask about the primary target user — who specifically will use this (consumers, small businesses, or a specific profession/niche). Keep it to one punchy sentence with a question at the end. Don't recap the answer, just acknowledge briefly and ask.`;
+Now ask your second and final question. Ask about the primary target user - who specifically will use this (consumers, small businesses, or a specific profession/niche). Keep it to one punchy sentence with a question at the end. Don't recap the answer, just acknowledge briefly and ask.`;
     } else if (phase === 'q2') {
-      const { q2Answer } = req.body;
+      const q2Answer = safeStr(req.body.q2Answer);
       userContent = `The user answered the second question about target users with: "${q2Answer}".
 
-Tell them in 1–2 short sentences that you have everything you need and are generating their app now. Be enthusiastic but brief. End with something like "generating your app now..."`;
+Tell them in 1-2 short sentences that you have everything you need and are generating their app now. Be enthusiastic but brief. End with something like "generating your app now..."`;
     } else {
       return res.status(400).json({ error: 'Invalid phase' });
     }
 
-    const response = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+    const response = await groq.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
       max_tokens: 512,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: userContent }],
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: userContent },
+      ],
     });
 
-    res.json({ content: response.content[0].text });
+    res.json({ content: response.choices[0].message.content });
   } catch (err) {
     console.error('Build chat error:', err.message);
-    res.status(500).json({ error: 'AI response failed' });
+    res.status(500).json({ error: err.message || 'AI response failed' });
   }
 });
 
@@ -65,10 +79,11 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 
 // POST /api/build/generate  — produces React component + preview HTML
 router.post('/generate', async (req, res) => {
-  try {
-    const { ideaTitle, problem, targetUser } = req.body;
+  const ideaTitle = safeStr(req.body.ideaTitle);
+  const problem = safeStr(req.body.problem);
+  const targetUser = safeStr(req.body.targetUser);
 
-    const prompt = `Build a polished, production-quality React application for this startup idea.
+  const prompt = `Build a polished, production-quality React application for this startup idea.
 
 Idea: ${ideaTitle}
 Core problem: ${problem}
@@ -114,20 +129,40 @@ QUALITY BAR:
 
 Output ONLY the JavaScript/JSX. No markdown, no code fences, no explanation.`;
 
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 16000,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: prompt }],
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  try {
+    let appCode = '';
+
+    const stream = await groq.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      max_tokens: 8192,
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: prompt },
+      ],
+      stream: true,
     });
 
-    const appCode = response.content[0].text;
-    const html = buildPreviewHtml(appCode);
+    for await (const chunk of stream) {
+      const delta = chunk.choices[0]?.delta?.content;
+      if (delta) {
+        appCode += delta;
+        res.write(`data: ${JSON.stringify({ type: 'chunk' })}\n\n`);
+      }
+    }
 
-    res.json({ html, appCode });
+    const html = buildPreviewHtml(appCode);
+    res.write(`data: ${JSON.stringify({ type: 'done', html, appCode })}\n\n`);
+    res.end();
   } catch (err) {
     console.error('Build generate error:', err.message);
-    res.status(500).json({ error: 'App generation failed' });
+    res.write(`data: ${JSON.stringify({ type: 'error', error: err.message || 'App generation failed' })}\n\n`);
+    res.end();
   }
 });
 
@@ -156,9 +191,9 @@ router.post('/publish', async (req, res) => {
     const createRes = await fetch('https://api.github.com/user/repos', {
       method: 'POST',
       headers: ghHeaders,
-      body: JSON.stringify({
+      body: ghBody({
         name: repoName,
-        description: `Built with Sviber AI — ${ideaTitle}`,
+        description: `Built with Sviber AI - ${safeStr(ideaTitle)}`,
         private: false,
         auto_init: true,
       }),
@@ -225,7 +260,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         const r = await fetch(`https://api.github.com/repos/${owner}/${repoName}/git/blobs`, {
           method: 'POST',
           headers: ghHeaders,
-          body: JSON.stringify({ content, encoding: 'utf-8' }),
+          body: ghBody({ content: Buffer.from(content, 'utf-8').toString('base64'), encoding: 'base64' }),
         });
         const b = await r.json();
         if (!r.ok) throw new Error(b.message || `Failed to create blob for ${path}`);
@@ -237,7 +272,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     const treeRes = await fetch(`https://api.github.com/repos/${owner}/${repoName}/git/trees`, {
       method: 'POST',
       headers: ghHeaders,
-      body: JSON.stringify({ tree: treeEntries }),
+      body: ghBody({ tree: treeEntries }),
     });
     const tree = await treeRes.json();
     if (!treeRes.ok) throw new Error(tree.message || 'Failed to create tree');
@@ -246,8 +281,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     const commitRes = await fetch(`https://api.github.com/repos/${owner}/${repoName}/git/commits`, {
       method: 'POST',
       headers: ghHeaders,
-      body: JSON.stringify({
-        message: 'feat: initial app — generated by Sviber AI',
+      body: ghBody({
+        message: 'feat: initial app - generated by Sviber AI',
         tree: tree.sha,
         parents: [baseSha],
       }),
@@ -259,7 +294,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     const updateRefRes = await fetch(`https://api.github.com/repos/${owner}/${repoName}/git/refs/heads/main`, {
       method: 'PATCH',
       headers: ghHeaders,
-      body: JSON.stringify({ sha: commit.sha, force: true }),
+      body: ghBody({ sha: commit.sha, force: true }),
     });
     if (!updateRefRes.ok) {
       const e = await updateRefRes.json();
@@ -271,7 +306,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       await fetch(`https://api.github.com/repos/${owner}/${repoName}/collaborators/${encodeURIComponent(username)}`, {
         method: 'PUT',
         headers: ghHeaders,
-        body: JSON.stringify({ permission: 'push' }),
+        body: ghBody({ permission: 'push' }),
       }).catch(() => {});
     }
 

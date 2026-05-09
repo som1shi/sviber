@@ -5,14 +5,17 @@ services:
     rootDir: server
     buildCommand: npm install
     startCommand: node index.js
-    branch: chat-page
+    branch: main
 
   - type: static
     name: sviber-client
     rootDir: client
     buildCommand: npm install && npm run build
     staticPublishPath: dist
-    branch: chat-page
+    branch: main
+    envVars:
+      - key: VITE_API_URL
+        value: https://sviber-server.onrender.com
     routes:
       - type: rewrite
         source: /*
