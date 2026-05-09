@@ -109,10 +109,19 @@ router.post('/', async (req, res) => {
     const { prompt } = req.body;
 
     if (prompt?.trim()) {
-      // User-submitted idea — refine it
+      // User-submitted idea — refine it, then upsert so duplicates still return the idea
       const refined = await refineUserIdea(prompt.trim());
-      const saved = await saveIdeas([refined]);
-      return res.json({ generated: saved.length, ideas: saved, source: 'user' });
+      let idea = await Idea.findOne({ title: { $regex: new RegExp(`^${refined.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } });
+      if (!idea) {
+        idea = await Idea.create({
+          title: refined.title,
+          description: refined.description,
+          tags: refined.tags,
+          eloScore: refined.heat,
+          isAiGenerated: true,
+        });
+      }
+      return res.json({ generated: 1, ideas: [idea], source: 'user' });
     }
 
     // No prompt — generate a fresh batch
