@@ -37,7 +37,7 @@ Tell them in 1–2 short sentences that you have everything you need and are gen
     res.json({ content: response.content[0].text });
   } catch (err) {
     console.error('Build chat error:', err.message);
-    res.status(500).json({ error: 'AI response failed' });
+    res.status(500).json({ error: err.message || 'AI response failed' });
   }
 });
 
@@ -65,10 +65,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 
 // POST /api/build/generate  — produces React component + preview HTML
 router.post('/generate', async (req, res) => {
-  try {
-    const { ideaTitle, problem, targetUser } = req.body;
+  const { ideaTitle, problem, targetUser } = req.body;
 
-    const prompt = `Build a polished, production-quality React application for this startup idea.
+  const prompt = `Build a polished, production-quality React application for this startup idea.
 
 Idea: ${ideaTitle}
 Core problem: ${problem}
@@ -114,20 +113,37 @@ QUALITY BAR:
 
 Output ONLY the JavaScript/JSX. No markdown, no code fences, no explanation.`;
 
-    const response = await anthropic.messages.create({
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  try {
+    let appCode = '';
+
+    const stream = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 16000,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: prompt }],
+      stream: true,
     });
 
-    const appCode = response.content[0].text;
-    const html = buildPreviewHtml(appCode);
+    for await (const event of stream) {
+      if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+        appCode += event.delta.text;
+        res.write(`data: ${JSON.stringify({ type: 'chunk' })}\n\n`);
+      }
+    }
 
-    res.json({ html, appCode });
+    const html = buildPreviewHtml(appCode);
+    res.write(`data: ${JSON.stringify({ type: 'done', html, appCode })}\n\n`);
+    res.end();
   } catch (err) {
     console.error('Build generate error:', err.message);
-    res.status(500).json({ error: 'App generation failed' });
+    res.write(`data: ${JSON.stringify({ type: 'error', error: err.message || 'App generation failed' })}\n\n`);
+    res.end();
   }
 });
 
