@@ -1,14 +1,14 @@
 const express = require('express');
 const router = express.Router();
-const Anthropic = require('@anthropic-ai/sdk');
+const Groq = require('groq-sdk');
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 const SYSTEM_PROMPT = `You are Sviber AI, a sharp AI co-pilot embedded in Sviber - a platform where two founders match on an idea and immediately start building it together.
 
 Your personality: concise, energetic, founder-mode. No fluff. Get straight to the point. Use short sentences. You are excited but efficient.`;
 
-// Strips non-ASCII characters so Node.js undici fetch does not throw ByteString errors
+// Strips non-ASCII characters to keep prompts safe across all HTTP clients
 function safeStr(s) {
   return String(s || '').replace(/[^\x00-\x7F]/g, '?');
 }
@@ -39,14 +39,16 @@ Tell them in 1-2 short sentences that you have everything you need and are gener
       return res.status(400).json({ error: 'Invalid phase' });
     }
 
-    const response = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+    const response = await groq.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
       max_tokens: 512,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: userContent }],
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: userContent },
+      ],
     });
 
-    res.json({ content: response.content[0].text });
+    res.json({ content: response.choices[0].message.content });
   } catch (err) {
     console.error('Build chat error:', err.message);
     res.status(500).json({ error: err.message || 'AI response failed' });
@@ -136,17 +138,20 @@ Output ONLY the JavaScript/JSX. No markdown, no code fences, no explanation.`;
   try {
     let appCode = '';
 
-    const stream = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 16000,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: prompt }],
+    const stream = await groq.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      max_tokens: 8192,
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: prompt },
+      ],
       stream: true,
     });
 
-    for await (const event of stream) {
-      if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-        appCode += event.delta.text;
+    for await (const chunk of stream) {
+      const delta = chunk.choices[0]?.delta?.content;
+      if (delta) {
+        appCode += delta;
         res.write(`data: ${JSON.stringify({ type: 'chunk' })}\n\n`);
       }
     }
